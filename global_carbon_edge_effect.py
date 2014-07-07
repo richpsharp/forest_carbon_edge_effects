@@ -1,7 +1,10 @@
 import os
 
 import gdal
+import osr
 import numpy
+import pyproj
+
 
 from invest_natcap import raster_utils
 
@@ -17,7 +20,7 @@ if __name__ == '__main__':
 
     raster_utils.create_directories([OUTPUT_DIR])
     
-    for prefix in ['am', 'af', 'as']:
+    for prefix in ['am']:#, 'af', 'as']:
         lulc_raw_uri = os.path.join(DATA_DIR, '%s%s' % (prefix, LULC_BASE))
         biomass_raw_uri = os.path.join(DATA_DIR, '%s%s' % (prefix, BIOMASS_BASE))
         
@@ -30,7 +33,7 @@ if __name__ == '__main__':
             [lulc_raw_uri, biomass_raw_uri], [lulc_uri, biomass_uri], ['nearest']*2,
             cell_size, 'intersection', 0, dataset_to_bound_index=None,
             aoi_uri=None, assert_datasets_projected=True, process_pool=None)
-           ''' 
+        '''
         lulc_nodata = raster_utils.get_nodata_from_uri(lulc_uri)
         biomass_nodata = raster_utils.get_nodata_from_uri(biomass_uri)
         
@@ -55,7 +58,7 @@ if __name__ == '__main__':
             datasets_are_pre_aligned=True)
         '''
         forest_edge_distance_uri = os.path.join(OUTPUT_DIR, "%s_forest_edge.tif" % prefix)
-        raster_utils.distance_transform_edt(mask_uri, forest_edge_distance_uri)
+        #raster_utils.distance_transform_edt(mask_uri, forest_edge_distance_uri)
 
         forest_edge_nodata = raster_utils.get_nodata_from_uri(forest_edge_distance_uri)
         biomass_stats_uri = os.path.join(OUTPUT_DIR,  "%s_biomass_stats.csv" % prefix)
@@ -68,11 +71,23 @@ if __name__ == '__main__':
         forest_edge_distance_band = forest_edge_distance_ds.GetRasterBand(1)
         
         n_rows, n_cols = raster_utils.get_row_col_from_uri(biomass_uri)
+        
+        base_srs = osr.SpatialReference(biomass_ds.GetProjection())
+        lat_lng_srs = base_srs.CloneGeogCS()
+        coord_transform = osr.CoordinateTransformation(
+            base_srs, lat_lng_srs)
+        gt = biomass_ds.GetGeoTransform()
+        
         for row_index in xrange(n_rows):
             print row_index, n_rows
             biomass_row = biomass_band.ReadAsArray(0, row_index, n_cols, 1)
             forest_edge_distance_row = forest_edge_distance_band.ReadAsArray(
                 0, row_index, n_cols, 1)
+            row_coord = gt[3] + row_index * gt[5]
             for col_index in xrange(n_cols):
-                if forest_edge_distance_row[0, col_index] != forest_edge_nodata:
-                    outfile.write("%f,%f\n" % (forest_edge_distance_row[0, col_index], biomass_row[0, col_index]))
+                col_coord = gt[0] + col_index * gt[1]
+                lng_coord, lat_coord, _ = coord_transform.TransformPoint(
+                    col_coord, row_coord)
+                
+                if forest_edge_distance_row[0, col_index] != forest_edge_nodata and forest_edge_distance_row[0, col_index] > 0.0:
+                    outfile.write("%f,%f,%f,%f\n" % (forest_edge_distance_row[0, col_index] * cell_size, biomass_row[0, col_index], lat_coord, lng_coord))
