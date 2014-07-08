@@ -1,4 +1,5 @@
 import os
+import sys
 
 import gdal
 import osr
@@ -14,6 +15,7 @@ OUTPUT_DIR = os.path.join("C:\\", "Users", "rich", "Desktop", "forest_edge_outpu
 BIOMASS_BASE = '_biov2ct1.tif'
 LULC_BASE = '.tif'
 FOREST_LULCS = [1, 2, 3, 4, 5]
+
 
 if __name__ == '__main__':
     #mask out forest LULCs
@@ -88,5 +90,8 @@ if __name__ == '__main__':
                 lng_coord, lat_coord, _ = coord_transform.TransformPoint(
                     col_coord, row_coord)
                 
-                if forest_edge_distance_row[0, col_index] != forest_edge_nodata and forest_edge_distance_row[0, col_index] > 0.0:
+                if forest_edge_distance_row[0, col_index] != forest_edge_nodata and forest_edge_distance_row[0, col_index] > 0.0 and biomass_row[0, col_index] != biomass_nodata:
                     outfile.write("%f,%f,%f,%f\n" % (forest_edge_distance_row[0, col_index] * cell_size, biomass_row[0, col_index], lat_coord, lng_coord))
+        
+    raster_utils.email_report(
+        "done with global_carbon_edge_effect.py", "3152624786@txt.att.net")
