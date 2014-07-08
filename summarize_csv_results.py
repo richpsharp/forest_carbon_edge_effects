@@ -2,9 +2,13 @@ import os
 import collections
 import time
 
+from invest_natcap import raster_utils
+
 CSV_DIR = os.path.join("C:\\", "Users", "rich", "Desktop", "forest_edge_output")
 
 if __name__ == '__main__':
+    raster_utils.email_report(
+        "starting summarize_csv_results.py", "3152624786@txt.att.net")
     for prefix in ['am', 'af', 'as']:
         biomass_stats_uri = os.path.join(
             CSV_DIR, "%s_biomass_stats.csv" % prefix)
@@ -44,7 +48,7 @@ if __name__ == '__main__':
             biomass_summary_file.write(
                 ',%f\n' % (sum(biomass_list)/float(len(biomass_list))))
 
-
-
+    raster_utils.email_report(
+        "done with summarize_csv_results.py", "3152624786@txt.att.net")
 
 
