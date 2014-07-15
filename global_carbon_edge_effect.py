@@ -21,7 +21,10 @@ if __name__ == '__main__':
     #mask out forest LULCs
     raster_utils.create_directories([OUTPUT_DIR])
     
-    for prefix in ['am', 'af', 'as']:
+    pantropic_regions = ['am', 'af', 'as']
+    ecoregion_headers = ['ECO_NAME', 'ECODE_NAME', 'WWF_MHTNAM']
+    
+    for prefix in pantropic_regions:
         lulc_raw_uri = os.path.join(DATA_DIR, '%s%s' % (prefix, LULC_BASE))
         biomass_raw_uri = os.path.join(DATA_DIR, '%s%s' % (prefix, BIOMASS_BASE))
         
@@ -34,6 +37,19 @@ if __name__ == '__main__':
             [lulc_raw_uri, biomass_raw_uri], [lulc_uri, biomass_uri], ['nearest']*2,
             cell_size, 'intersection', 0, dataset_to_bound_index=None,
             aoi_uri=None, assert_datasets_projected=True, process_pool=None)
+        
+        #create ecoregion id
+        ecoregion_shapefile_uri = os.path.join(
+            DATA_DIR, 'ecoregions', 'ecoregions_projected.shp')
+        ecoregion_dataset_uri = os.path.join(
+            OUTPUT_DIR, "%s_ecoregion_id.tif" % (prefix))
+        raster_utils.new_raster_from_base_uri(
+            lulc_uri, ecoregion_dataset_uri, 'GTiff', -1, gdal.GDT_Int16)
+        raster_utils.rasterize_layer_uri(
+            ecoregion_dataset_uri, ecoregion_shapefile_uri,
+            option_list=["ATTRIBUTE=ECO_ID_U"])
+        
+        sys.exit(0)
         
         lulc_nodata = raster_utils.get_nodata_from_uri(lulc_uri)
         biomass_nodata = raster_utils.get_nodata_from_uri(biomass_uri)
