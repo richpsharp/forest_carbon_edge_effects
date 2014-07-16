@@ -53,7 +53,7 @@ if __name__ == '__main__':
         #create ecoregion id
         ecoregion_dataset_uri = os.path.join(
             OUTPUT_DIR, "%s_ecoregion_id.tif" % (prefix))
-        'raster_utils.new_raster_from_base_uri(
+        raster_utils.new_raster_from_base_uri(
             lulc_uri, ecoregion_dataset_uri, 'GTiff', ecoregion_nodata, gdal.GDT_Int16)
         raster_utils.rasterize_layer_uri(
             ecoregion_dataset_uri, ecoregion_shapefile_uri,
