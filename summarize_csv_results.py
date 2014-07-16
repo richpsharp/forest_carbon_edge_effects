@@ -25,9 +25,9 @@ def process_biomass_csv(prefix):
     
     
     for line in biomass_file:
-        distance, biomass = [float(x) for x in line.split(',')[0:2]]
+        distance, biomass = [float(x) for x in line.split(';')[0:2]]
         try:
-            eco_name, ecode_name, wwf_htnam = line.split(',')[4:]
+            eco_name, ecode_name, wwf_htnam = line.split(';')[4:]
         except ValueError as e:
             print line
             raise e

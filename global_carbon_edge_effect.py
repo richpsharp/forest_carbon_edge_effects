@@ -120,7 +120,7 @@ if __name__ == '__main__':
                     col_coord, row_coord)
                 ecoregion_id = ecoregion_id_row[0, col_index]
                 if forest_edge_distance_row[0, col_index] != forest_edge_nodata and forest_edge_distance_row[0, col_index] > 0.0 and biomass_row[0, col_index] != biomass_nodata:
-                    outfile.write("%f,%f,%f,%f,%s,%s,%s\n" % (forest_edge_distance_row[0, col_index] * cell_size, biomass_row[0, col_index], lat_coord, lng_coord, ecoregion_lookup[ecoregion_id]['ECO_NAME'], ecoregion_lookup[ecoregion_id]['ECODE_NAME'], ecoregion_lookup[ecoregion_id]['WWF_MHTNAM']))
+                    outfile.write("%f;%f;%f;%f;%s;%s;%s\n" % (forest_edge_distance_row[0, col_index] * cell_size, biomass_row[0, col_index], lat_coord, lng_coord, ecoregion_lookup[ecoregion_id]['ECO_NAME'], ecoregion_lookup[ecoregion_id]['ECODE_NAME'], ecoregion_lookup[ecoregion_id]['WWF_MHTNAM']))
         
     raster_utils.email_report(
         "done with global_carbon_edge_effect.py", "3152624786@txt.att.net")
