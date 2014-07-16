@@ -29,6 +29,12 @@ if __name__ == '__main__':
     
     ecoregion_lookup = raster_utils.extract_datasource_table_by_key(
         ecoregion_shapefile_uri, 'ECO_ID_U')
+    ecoregion_nodata = -1
+    ecoregion_lookup[ecoregion_nodata] = {
+        'ECO_NAME': 'UNKNOWN',
+        'ECODE_NAME': 'UNKNOWN',
+        'WWF_MHTNAM': 'UNKNOWN',
+        }
     
     for prefix in pantropic_regions:
         lulc_raw_uri = os.path.join(DATA_DIR, '%s%s' % (prefix, LULC_BASE))
@@ -47,11 +53,14 @@ if __name__ == '__main__':
         #create ecoregion id
         ecoregion_dataset_uri = os.path.join(
             OUTPUT_DIR, "%s_ecoregion_id.tif" % (prefix))
-        raster_utils.new_raster_from_base_uri(
-            lulc_uri, ecoregion_dataset_uri, 'GTiff', -1, gdal.GDT_Int16)
+        'raster_utils.new_raster_from_base_uri(
+            lulc_uri, ecoregion_dataset_uri, 'GTiff', ecoregion_nodata, gdal.GDT_Int16)
         raster_utils.rasterize_layer_uri(
             ecoregion_dataset_uri, ecoregion_shapefile_uri,
             option_list=["ATTRIBUTE=ECO_ID_U"])
+            
+        ecoregion_dataset = gdal.Open(ecoregion_dataset_uri)
+        ecoregion_band = ecoregion_dataset.GetRasterBand(1)
         
         lulc_nodata = raster_utils.get_nodata_from_uri(lulc_uri)
         biomass_nodata = raster_utils.get_nodata_from_uri(biomass_uri)
@@ -102,14 +111,16 @@ if __name__ == '__main__':
             biomass_row = biomass_band.ReadAsArray(0, row_index, n_cols, 1)
             forest_edge_distance_row = forest_edge_distance_band.ReadAsArray(
                 0, row_index, n_cols, 1)
+            ecoregion_id_row = ecoregion_band.ReadAsArray(
+                0, row_index, n_cols, 1)
             row_coord = gt[3] + row_index * gt[5]
             for col_index in xrange(n_cols):
                 col_coord = gt[0] + col_index * gt[1]
                 lng_coord, lat_coord, _ = coord_transform.TransformPoint(
                     col_coord, row_coord)
-                
+                ecoregion_id = ecoregion_id_row[0, col_index]
                 if forest_edge_distance_row[0, col_index] != forest_edge_nodata and forest_edge_distance_row[0, col_index] > 0.0 and biomass_row[0, col_index] != biomass_nodata:
-                    outfile.write("%f,%f,%f,%f\n" % (forest_edge_distance_row[0, col_index] * cell_size, biomass_row[0, col_index], lat_coord, lng_coord))
+                    outfile.write("%f,%f,%f,%f,%s,%s,%s\n" % (forest_edge_distance_row[0, col_index] * cell_size, biomass_row[0, col_index], lat_coord, lng_coord, ecoregion_lookup[ecoregion_id]['ECO_NAME'], ecoregion_lookup[ecoregion_id]['ECODE_NAME'], ecoregion_lookup[ecoregion_id]['WWF_MHTNAM']))
         
     raster_utils.email_report(
         "done with global_carbon_edge_effect.py", "3152624786@txt.att.net")
