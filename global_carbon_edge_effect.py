@@ -24,6 +24,12 @@ if __name__ == '__main__':
     pantropic_regions = ['am', 'af', 'as']
     ecoregion_headers = ['ECO_NAME', 'ECODE_NAME', 'WWF_MHTNAM']
     
+    ecoregion_shapefile_uri = os.path.join(
+            DATA_DIR, 'ecoregions', 'ecoregions_projected.shp')
+    
+    ecoregion_lookup = raster_utils.extract_datasource_table_by_key(
+        ecoregion_shapefile_uri, 'ECO_ID_U')
+    
     for prefix in pantropic_regions:
         lulc_raw_uri = os.path.join(DATA_DIR, '%s%s' % (prefix, LULC_BASE))
         biomass_raw_uri = os.path.join(DATA_DIR, '%s%s' % (prefix, BIOMASS_BASE))
@@ -39,8 +45,6 @@ if __name__ == '__main__':
             aoi_uri=None, assert_datasets_projected=True, process_pool=None)
         
         #create ecoregion id
-        ecoregion_shapefile_uri = os.path.join(
-            DATA_DIR, 'ecoregions', 'ecoregions_projected.shp')
         ecoregion_dataset_uri = os.path.join(
             OUTPUT_DIR, "%s_ecoregion_id.tif" % (prefix))
         raster_utils.new_raster_from_base_uri(
@@ -48,8 +52,6 @@ if __name__ == '__main__':
         raster_utils.rasterize_layer_uri(
             ecoregion_dataset_uri, ecoregion_shapefile_uri,
             option_list=["ATTRIBUTE=ECO_ID_U"])
-        
-        sys.exit(0)
         
         lulc_nodata = raster_utils.get_nodata_from_uri(lulc_uri)
         biomass_nodata = raster_utils.get_nodata_from_uri(biomass_uri)
