@@ -10,6 +10,9 @@ CSV_DIR = os.path.join("C:\\", "Users", "rich", "Desktop", "forest_edge_output")
 eco_name_set = collections.defaultdict(float)
 ecode_name_set = collections.defaultdict(float)
 wwf_htnam_set = collections.defaultdict(float)
+eco_name_count = collections.defaultdict(int)
+ecode_name_count = collections.defaultdict(int)
+wwf_htnam_count = collections.defaultdict(int)
 
 def process_biomass_csv(prefix):
     biomass_stats_uri = os.path.join(
@@ -35,6 +38,10 @@ def process_biomass_csv(prefix):
         eco_name_set[eco_name] += biomass
         ecode_name_set[ecode_name] += biomass
         wwf_htnam_set[wwf_htnam] += biomass
+        
+        eco_name_count[eco_name] += 1
+        ecode_name_count[ecode_name] += 1
+        wwf_htnam_count[wwf_htnam] += 1
         
         continue
         
@@ -83,19 +90,15 @@ if __name__ == '__main__':
         process_biomass_csv(prefix)
     for result in result_list:
         result.get()
-
-    biomass_summary_uri = os.path.join(
-        CSV_DIR, '%s_biomass_summary.csv' % prefix)
-    biomass_summary_file = open(biomass_summary_uri, 'w')
     
     eco_name_uri = os.path.join(CSV_DIR, 'eco_name_summary.csv')
     ecode_name_uri = os.path.join(CSV_DIR, 'ecode_name_summary.csv')
     wwf_htnam_uri = os.path.join(CSV_DIR, 'wwf_htnam_summary.csv')
     
-    for uri, biomass_set in [(eco_name_uri, eco_name_set), (ecode_name_uri, ecode_name_set), (wwf_htnam_uri, wwf_htnam_set)]:
+    for uri, biomass_set, biomass_count in [(eco_name_uri, eco_name_set, eco_name_count), (ecode_name_uri, ecode_name_set, ecode_name_count), (wwf_htnam_uri, wwf_htnam_set, wwf_htnam_count)]:
         outfile = open(uri, 'w')
-        for bioregion_name in sorted(set):
-            outfile.write('%s,%f\n' % (bioregion_name, biomass_set[bioregion_name]))
+        for bioregion_name in sorted(biomass_set):
+            outfile.write('%s,%f,%d\n' % (bioregion_name.rstrip().translate(None,','), biomass_set[bioregion_name], biomass_count[bioregion_name]))
     
     raster_utils.email_report(
         "done with summarize_csv_results.py", "3152624786@txt.att.net")
