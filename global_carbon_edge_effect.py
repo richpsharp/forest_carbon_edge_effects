@@ -212,7 +212,7 @@ if __name__ == '__main__':
 
     pantropic_regions = ['am', 'af', 'as']
     for PREFIX in pantropic_regions:
-        input_queue.put(PREFIX)
+        input_queue.put((process_ecoregion, [PREFIX,]))
         #cProfile.runctx('process_ecoregion(PREFIX)', locals(), globals(), 'stats')
         #p = pstats.Stats('stats')
         #p.sort_stats('time').print_stats(20)
