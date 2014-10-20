@@ -77,6 +77,8 @@ def _aggregate_results(forest_edge_distance_uri, biomass_uri, ecoregion_dataset_
         base_srs, lat_lng_srs)
     gt = biomass_ds.GetGeoTransform()
 
+    grid_resolution_list = [25, 50, 100, 150, 200, 300, 400, 500]
+    grid_coordinates = dict((resolution, {}) for resolution in grid_resolution_list)
 
     block_col_size, block_row_size = biomass_band.GetBlockSize()
     n_global_block_rows = int(math.ceil(float(n_rows) / block_row_size))
@@ -103,10 +105,10 @@ def _aggregate_results(forest_edge_distance_uri, biomass_uri, ecoregion_dataset_
             for global_row in xrange(global_block_row*block_row_size, min((global_block_row+1)*block_row_size, n_rows)):
                 for global_col in xrange(global_block_col*block_col_size, min((global_block_col+1)*block_col_size, n_cols)):
                     row_coord = gt[3] + global_row * gt[5]    
-                    col_coord = gt[0] + row_coord * gt[1]
+                    col_coord = gt[0] + global_col * gt[1]
 
-                    local_row = global_row - global_block_row*block_row_size
-                    local_col = global_col - global_block_col*block_col_size
+                    local_row = global_row - global_block_row * block_row_size
+                    local_col = global_col - global_block_col * block_col_size
 
                     lng_coord, lat_coord, _ = coord_transform.TransformPoint(
                         col_coord, row_coord)
@@ -127,12 +129,30 @@ def _aggregate_results(forest_edge_distance_uri, biomass_uri, ecoregion_dataset_
                             ecoregion_lookup[ecoregion_id]['ECODE_NAME'],
                             ecoregion_lookup[ecoregion_id]['WWF_MHTNAM']))
                         outfile.write(";%f;%f" % (global_grid_row, global_grid_col))
-                        for global_grid_resolution in [25, 50, 100, 150, 200, 300, 400, 500]:
+                        for global_grid_resolution in grid_resolution_list:
                             #output a grid coordinate in the form 'grid_row-grid_col'
-                            outfile.write(";%s" % (
-                                str(int(global_grid_row/(global_grid_resolution*1000))) +
-                                '-' + str(int(global_grid_col/(global_grid_resolution*1000)))))
+                            grid_row = int(global_grid_row/(global_grid_resolution*1000))
+                            grid_col = int(global_grid_col/(global_grid_resolution*1000))
+                            grid_id = str(grid_row) + '-' + str(grid_col)
+                            outfile.write(";%s" % grid_id)
+                            if grid_id not in grid_coordinates[global_grid_resolution]:
+                                grid_row_center = grid_row * global_grid_resolution*1000 + GLOBAL_UPPER_LEFT_ROW
+                                grid_col_center = grid_col * global_grid_resolution*1000 + GLOBAL_UPPER_LEFT_COL
+                                grid_lng_coord, grid_lat_coord, _ = coord_transform.TransformPoint(
+                                    grid_col_center, grid_row_center)
+                                grid_coordinates[global_grid_resolution][grid_id] = (grid_lat_coord, grid_lng_coord)
+                                print grid_lat_coord, grid_lng_coord
                         outfile.write('\n')
+    outfile.close()
+    for global_grid_resolution in grid_resolution_list:
+        output_dir, base_filename = os.path.split(biomass_stats_uri)
+        basename = os.path.basename(base_filename)
+        grid_output_file = open(path.join(output_dir, basename + '_' + str(global_grid_resolution) + '.csv'), 'w')
+        grid_output_file.write('grid id;lat_coord;lng_coord\n')
+        open(biomass_stats_uri, 'w')
+        for grid_id, (lat, lng) in grid_coordinates[global_grid_resolution].iteritems():
+            grid_output_file.write('%s;%s;%s\n' % (grid_id, lat, lng))
+        grid_output_file.close()
 
 def process_ecoregion(prefix):
     ecoregion_shapefile_uri = os.path.join(
@@ -202,17 +222,17 @@ if __name__ == '__main__':
     #mask out forest LULCs
     raster_utils.create_directories([OUTPUT_DIR])
 
-    input_queue = multiprocessing.JoinableQueue()
-    output_queue = multiprocessing.Queue()
+    INPUT_QUEUE = multiprocessing.JoinableQueue()
+    OUTPUT_QUEUE = multiprocessing.Queue()
     
     NUMBER_OF_PROCESSES = multiprocessing.cpu_count()
 
     for _ in xrange(NUMBER_OF_PROCESSES):
-        multiprocessing.Process(target=worker, args=(input_queue, output_queue)).start()
+        multiprocessing.Process(target=worker, args=(INPUT_QUEUE, OUTPUT_QUEUE)).start()
 
     pantropic_regions = ['am', 'af', 'as']
     for PREFIX in pantropic_regions:
-        input_queue.put((process_ecoregion, [PREFIX,]))
+        INPUT_QUEUE.put((process_ecoregion, [PREFIX,]))
         #cProfile.runctx('process_ecoregion(PREFIX)', locals(), globals(), 'stats')
         #p = pstats.Stats('stats')
         #p.sort_stats('time').print_stats(20)
@@ -220,9 +240,9 @@ if __name__ == '__main__':
         #break
 
     for _ in xrange(NUMBER_OF_PROCESSES):
-        input_queue.put('STOP')
+        INPUT_QUEUE.put('STOP')
 
-    input_queue.join()
+    INPUT_QUEUE.join()
 
     raster_utils.email_report(
         "done with global_carbon_edge_effect.py", "3152624786@txt.att.net")
