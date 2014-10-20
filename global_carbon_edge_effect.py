@@ -13,8 +13,8 @@ import sys
 from invest_natcap import raster_utils
 
 BIOMASS_PREFIXES = ['am', 'af', 'as']
-DATA_DIR = os.path.join("C:\\", "Users", "rich", "Desktop")
-OUTPUT_DIR = os.path.join("C:\\", "Users", "rich", "Desktop", "forest_edge_output")
+DATA_DIR = os.path.join("C://", "Users", "rich", "Desktop")
+OUTPUT_DIR = os.path.join("C://", "Users", "rich", "Desktop", "forest_edge_output")
 BIOMASS_BASE = '_biov2ct1.tif'
 LULC_BASE = '.tif'
 FOREST_LULCS = [1, 2, 3, 4, 5]
@@ -51,6 +51,157 @@ def worker(input_queue, output_queue):
         output_queue.put(result)
         input_queue.task_done()
     input_queue.task_done()
+
+
+def _make_magnitude_maps(base_uri, table_uri):
+    grid_resolution = 100
+    
+    base_ds = gdal.Open(base_uri)
+    
+    projection = base_ds.GetProjection()
+    driver = gdal.GetDriverByName('GTiff')
+
+    gt = base_ds.GetGeoTransform()
+
+    n_rows = base_ds.RasterYSize
+    n_cols = base_ds.RasterXSize
+
+    lookup_table = raster_utils.get_lookup_from_csv(table_uri, 'ID100km')
+    
+    for map_type in ['Magnitude', 'A80', 'A90', 'A95']:
+
+        output_dir, base_filename = os.path.split(base_uri)
+        basename = os.path.basename(base_filename)
+
+        output_uri = os.path.join(output_dir, map_type + '.tif')
+
+        n_rows_grid = int(-gt[5] * n_rows / (grid_resolution * 1000.0))
+        n_cols_grid = int(gt[1] * n_cols / (grid_resolution * 1000.0))
+
+        new_geotransform = (
+            gt[0], grid_resolution * 1000.0, gt[2],
+            gt[3], gt[4], -grid_resolution * 1000.0)
+
+        n_rows_grid = max([int(grid_cell.split('-')[0]) for grid_cell in lookup_table])
+        n_cols_grid = max([int(grid_cell.split('-')[1]) for grid_cell in lookup_table])
+
+        n_rows_grid += 1
+        n_cols_grid += 1
+
+        output_ds = driver.Create(
+            output_uri.encode('utf-8'), n_cols_grid, n_rows_grid, 1, gdal.GDT_Float32)
+        output_ds.SetProjection(projection)
+        output_ds.SetGeoTransform(new_geotransform)
+        output_band = output_ds.GetRasterBand(1)
+
+        output_nodata = -9999
+        output_band.SetNoDataValue(output_nodata)
+        output_band.Fill(output_nodata)
+
+        last_time = time.time()
+        for grid_id in lookup_table:
+            current_time = time.time()
+            if current_time - last_time > 5.0:
+                print "%s working..." % (map_type,)
+                last_time = current_time
+
+            grid_row_index, grid_col_index = map(int, grid_id.split('-'))
+
+            try:            
+                output_band.WriteArray(
+                    numpy.array([[float(lookup_table[grid_id][map_type])]]),
+                    xoff=grid_col_index, yoff=n_rows_grid - grid_row_index - 1)
+            except ValueError:
+                pass
+
+
+def _map_intensity(forest_edge_distance_uri, biomass_uri):
+    grid_resolution_list = [25, 50, 100, 150, 200, 300, 400, 500]
+    
+    forest_edge_distance_ds = gdal.Open(forest_edge_distance_uri)
+    forest_edge_distance_band = forest_edge_distance_ds.GetRasterBand(1)
+    forest_edge_distance_nodata = raster_utils.get_nodata_from_uri(forest_edge_distance_uri)
+
+    biomass_ds = gdal.Open(biomass_uri)
+    biomass_band = biomass_ds.GetRasterBand(1)
+    biomass_nodata = raster_utils.get_nodata_from_uri(biomass_uri)
+
+    n_rows = biomass_ds.RasterYSize
+    n_cols = biomass_ds.RasterXSize
+
+    projection = biomass_ds.GetProjection()
+    geotransform = biomass_ds.GetGeoTransform()
+    driver = gdal.GetDriverByName('GTiff')
+
+    gt = biomass_ds.GetGeoTransform()
+
+    for grid_resolution in grid_resolution_list:
+
+        output_dir, base_filename = os.path.split(biomass_uri)
+        basename = os.path.basename(base_filename)
+
+        output_uri = os.path.join(
+            output_dir, basename + '_intensity_' + str(grid_resolution) + '.tif')
+
+        n_rows_grid = int(-gt[5] * n_rows / (grid_resolution * 1000.0))
+        n_cols_grid = int(gt[1] * n_cols / (grid_resolution * 1000.0))
+
+        new_geotransform = (
+            gt[0], grid_resolution * 1000.0, gt[2],
+            gt[3], gt[4], -grid_resolution * 1000.0)
+
+        
+        output_ds = driver.Create(
+            output_uri.encode('utf-8'), n_cols_grid, n_rows_grid, 1, gdal.GDT_Float32)
+        output_ds.SetProjection(projection)
+        output_ds.SetGeoTransform(new_geotransform)
+        output_band = output_ds.GetRasterBand(1)
+
+        output_nodata = -1
+        output_band.SetNoDataValue(output_nodata)
+        output_band.Fill(output_nodata)
+
+        last_time = time.time()
+        for grid_row_index in xrange(n_rows_grid):
+            current_time = time.time()
+            if current_time - last_time > 5.0:
+                print "magnitude %.1f%% complete" % (grid_row_index / float(n_rows_grid) * 100)
+                last_time = current_time
+            for grid_col_index in xrange(n_cols_grid):
+                xoff = int(grid_col_index * (grid_resolution * 1000.0) / (gt[1]))
+                yoff = int(grid_row_index * (grid_resolution * 1000.0) / (-gt[5]))
+                win_xsize = int((grid_resolution * 1000.0) / (gt[1]))
+                win_ysize = int((grid_resolution * 1000.0) / (gt[1]))
+
+                biomass_block = biomass_band.ReadAsArray(
+                    xoff=xoff, yoff=yoff, win_xsize=win_xsize, win_ysize=win_ysize)
+                forest_edge_distance_block = forest_edge_distance_band.ReadAsArray(
+                    xoff=xoff, yoff=yoff, win_xsize=win_xsize, win_ysize=win_ysize)
+
+                valid_mask = numpy.where(
+                    (forest_edge_distance_block != forest_edge_distance_nodata) &
+                    (biomass_block != biomass_nodata))
+
+                flat_valid_biomass = biomass_block[valid_mask]
+
+                sorted_forest_edge = numpy.argsort(flat_valid_biomass)
+                flat_biomass = flat_valid_biomass[sorted_forest_edge]
+
+                n_elements = flat_biomass.size
+                if n_elements <= 10:
+                    continue
+                lower_biomass = numpy.average(flat_biomass[0:int(n_elements*0.1)])
+                upper_biomass = numpy.average(flat_biomass[int(n_elements*0.9):n_elements])
+
+                if lower_biomass == 0:
+                    continue
+
+                magnitude = upper_biomass/lower_biomass
+
+                output_band.WriteArray(
+                    numpy.array([[magnitude]]),
+                    xoff=grid_col_index, yoff=grid_row_index)
+
 
 def _aggregate_results(forest_edge_distance_uri, biomass_uri, ecoregion_dataset_uri, ecoregion_lookup, biomass_stats_uri):
     cell_size = raster_utils.get_cell_size_from_uri(forest_edge_distance_uri)
@@ -142,16 +293,16 @@ def _aggregate_results(forest_edge_distance_uri, biomass_uri, ecoregion_dataset_
                                     grid_col_center, grid_row_center)
                                 grid_coordinates[global_grid_resolution][grid_id] = (grid_lat_coord, grid_lng_coord)
                                 print grid_lat_coord, grid_lng_coord
-                        outfile.write('\n')
+                        outfile.write('/n')
     outfile.close()
     for global_grid_resolution in grid_resolution_list:
         output_dir, base_filename = os.path.split(biomass_stats_uri)
         basename = os.path.basename(base_filename)
-        grid_output_file = open(path.join(output_dir, basename + '_' + str(global_grid_resolution) + '.csv'), 'w')
-        grid_output_file.write('grid id;lat_coord;lng_coord\n')
+        grid_output_file = open(os.path.join(output_dir, basename + '_' + str(global_grid_resolution) + '.csv'), 'w')
+        grid_output_file.write('grid id;lat_coord;lng_coord/n')
         open(biomass_stats_uri, 'w')
         for grid_id, (lat, lng) in grid_coordinates[global_grid_resolution].iteritems():
-            grid_output_file.write('%s;%s;%s\n' % (grid_id, lat, lng))
+            grid_output_file.write('%s;%s;%s/n' % (grid_id, lat, lng))
         grid_output_file.close()
 
 def process_ecoregion(prefix):
@@ -232,7 +383,8 @@ if __name__ == '__main__':
 
     pantropic_regions = ['am', 'af', 'as']
     for PREFIX in pantropic_regions:
-        INPUT_QUEUE.put((process_ecoregion, [PREFIX,]))
+        pass
+        #INPUT_QUEUE.put((process_ecoregion, [PREFIX,]))
         #cProfile.runctx('process_ecoregion(PREFIX)', locals(), globals(), 'stats')
         #p = pstats.Stats('stats')
         #p.sort_stats('time').print_stats(20)
@@ -241,8 +393,21 @@ if __name__ == '__main__':
 
     for _ in xrange(NUMBER_OF_PROCESSES):
         INPUT_QUEUE.put('STOP')
-
     INPUT_QUEUE.join()
+        
+    for PREFIX in pantropic_regions:
+        pass
+        #INPUT_QUEUE.put((_map_intensity, ["C:/Users/rich/Desktop/forest_edge_output/%s_forest_edge.tif" % PREFIX,
+        #    "C:/Users/rich/Desktop/forest_edge_output/%s_biomass_aligned.tif" % PREFIX]))
+        #_map_intensity(
+        #    "C:/Users/rich/Desktop/forest_edge_output/%s_forest_edge.tif" % PREFIX,
+        #    "C:/Users/rich/Desktop/forest_edge_output/%s_biomass_aligned.tif" % PREFIX)
+
+    BASE_URI = "C:/Users/rich/Desktop/forest_edge_output/af_biomass_aligned.tif"
+    TABLE_URI = "C:/Users/rich/Desktop/forest_edge_output/all_grid_results_100km_clean.csv"
+    _make_magnitude_maps(BASE_URI, TABLE_URI)
+
+
 
     raster_utils.email_report(
         "done with global_carbon_edge_effect.py", "3152624786@txt.att.net")
