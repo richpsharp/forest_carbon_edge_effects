@@ -220,7 +220,7 @@ if __name__ == '__main__':
         #break
 
     for _ in xrange(NUMBER_OF_PROCESSES):
-            input_queue.put('STOP')
+        input_queue.put('STOP')
 
     input_queue.join()
 
