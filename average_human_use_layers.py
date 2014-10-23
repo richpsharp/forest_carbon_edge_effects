@@ -21,6 +21,21 @@ def average_layers():
 
     print table_header + ',' + ','.join(header_extend)
 
+    #need to mask the average layers to the biomass regions
+
+    giant_layer_uri = "C:/Users/rich/Desktop/average_layers_projected/giant_layer.tif"
+
+    af_uri = "C:/Users/rich/Desktop/af_biov2ct1.tif"
+    am_uri = "C:/Users/rich/Desktop/am_biov2ct1.tif"
+    as_uri = "C:/Users/rich/Desktop/as_biov2ct1.tif"
+    cell_size = raster_utils.get_cell_size_from_uri(am_uri)
+    raster_utils.vectorize_datasets(
+        [af_uri, am_uri, as_uri], lambda x,y,z: x+y+z, giant_layer_uri, gdal.GDT_Float32,
+        -1, cell_size, 'union', vectorize_op=False)
+
+    table_uri = "C:/Users/rich/Desktop/average_layers_projected/all_grid_results_100km_clean.csv"
+    lookup_table = raster_utils.get_lookup_from_csv(table_uri, 'ID100km')
+
     average_raster_list = [
         ("C:/Users/rich/Desktop/average_layers_projected/lighted_area_luminosity.tif", 'Lighted area density'),
         ("C:/Users/rich/Desktop/average_layers_projected/fi_average.tif", 'Fire densities'),
@@ -56,8 +71,46 @@ def average_layers():
     band_list = [ds.GetRasterBand(1) for ds in dataset_list]
     nodata_list = [band.GetNoDataValue() for band in band_list]
 
-    for raster_uri, label in average_raster_list:
-        pass
+
+    grid_resolution = 100 #100km
+    gt = band_list[0].GetGeoTransform()
+    n_rows_grid = int(-gt[5] * n_rows / (grid_resolution * 1000.0))
+    n_cols_grid = int(gt[1] * n_cols / (grid_resolution * 1000.0))
+
+    last_time = time.time()
+    for grid_row_index in xrange(n_rows_grid):
+        current_time = time.time()
+        if current_time - last_time > 5.0:
+            print "magnitude %.1f%% complete" % (grid_row_index / float(n_rows_grid) * 100)
+            last_time = current_time
+        for grid_col_index in xrange(n_cols_grid):
+            xoff = int(grid_col_index * (grid_resolution * 1000.0) / (gt[1]))
+            yoff = int(grid_row_index * (grid_resolution * 1000.0) / (-gt[5]))
+            win_xsize = int((grid_resolution * 1000.0) / (gt[1]))
+            win_ysize = int((grid_resolution * 1000.0) / (gt[1]))
+
+            biomass_block = biomass_band.ReadAsArray(
+                xoff=xoff, yoff=yoff, win_xsize=win_xsize, win_ysize=win_ysize)
+            forest_edge_distance_block = forest_edge_distance_band.ReadAsArray(
+                xoff=xoff, yoff=yoff, win_xsize=win_xsize, win_ysize=win_ysize)
+
+            valid_mask = numpy.where(
+                (forest_edge_distance_block != forest_edge_distance_nodata) &
+                (biomass_block != biomass_nodata))
+
+            flat_valid_biomass = biomass_block[valid_mask]
+
+            sorted_forest_edge = numpy.argsort(flat_valid_biomass)
+            flat_biomass = flat_valid_biomass[sorted_forest_edge]
+
+            n_elements = flat_biomass.size
+            if n_elements <= 10:
+                continue
+            lower_biomass = numpy.average(flat_biomass[0:int(n_elements*0.1)])
+            upper_biomass = numpy.average(flat_biomass[int(n_elements*0.9):n_elements])
+
+            if lower_biomass == 0:
+                continue
 
 if __name__ == '__main__':
     average_layers()
