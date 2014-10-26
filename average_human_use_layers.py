@@ -3,12 +3,18 @@ import time
 import numpy
 import functools
 import sys
+import codecs
+import types
 
 import gdal
+import osr
 
 from invest_natcap import raster_utils
 
-base_table_uri = "C:/Users/rich/Desktop/average_layers_projected/all_grid_results_100km_clean.csv"
+GLOBAL_UPPER_LEFT_ROW = -2602195.7925872812047601
+GLOBAL_UPPER_LEFT_COL = -11429693.3490753173828125
+
+base_table_uri = "C:/Users/rich/Desktop/average_layers_projected/all_grid_results_100km_clean_2.csv"
 
 def average_layers():
 
@@ -29,8 +35,14 @@ def average_layers():
 
     table_uri = "C:/Users/rich/Desktop/average_layers_projected/all_grid_results_100km_clean.csv"
     table_file = open(table_uri, 'rU')
+    
     table_header = table_file.readline().rstrip()
+
+
     lookup_table = raster_utils.get_lookup_from_csv(table_uri, 'ID100km')
+
+    out_table_uri =  "C:/Users/rich/Desktop/all_grid_results_100km_human.csv"
+    out_table_file = codecs.open(out_table_uri, 'w', 'utf-8')
 
     average_raster_list = [
         ("C:/Users/rich/Desktop/average_layers_projected/lighted_area_luminosity.tif", 'Lighted area density'),
@@ -80,32 +92,83 @@ def average_layers():
     nodata_list = [band.GetNoDataValue() for band in band_list]
 
     extended_table_headers = ','.join([header for _, header in average_raster_list])
-    print table_header + ',' + extended_table_headers
+
+
+    def write_to_file(value):
+        try:
+            out_table_file.write(value)
+        except UnicodeDecodeError as e:
+            out_table_file.write(value.decode('latin-1'))
+
+    write_to_file(table_header + ',' + extended_table_headers + '\n')
+    #print table_header + ',' + extended_table_headers
 
     for line in table_file:
         split_line = line.split(',')
         grid_id = split_line[2]
     #for grid_id in lookup_table:
-        grid_row_index, grid_col_index = map(int, grid_id.split('-'))
+        try:
+            split_grid_id = grid_id.split('-')
+            grid_row_index, grid_col_index = map(int, split_grid_id)
+        except ValueError as e:
+            month_to_number = {
+                'Jan': 1,
+                'Feb': 2,
+                'Mar': 3,
+                'Apr': 4,
+                'May': 5,
+                'Jun': 6,
+                'Jul': 7,
+                'Aug': 8,
+                'Sep': 9,
+                'Oct': 10,
+                'Nov': 11,
+                'Dec': 12,
+            }
+            grid_row_index, grid_col_index = month_to_number[split_grid_id[0]], int(split_grid_id[1])
+            
         print 'processing grid id ' + grid_id
-        print ','.join(split_line[0:11]), ',lat', ',lng,', ','.join(split_line[14:19]),
+
+        ds = dataset_list[0]
+        base_srs = osr.SpatialReference(ds.GetProjection())
+        lat_lng_srs = base_srs.CloneGeogCS()
+        coord_transform = osr.CoordinateTransformation(
+            base_srs, lat_lng_srs)
+        gt = ds.GetGeoTransform()
+        grid_resolution = 100 #100km
+        
+        row_coord = grid_row_index * grid_resolution * 1000 + GLOBAL_UPPER_LEFT_ROW
+        col_coord = grid_col_index * grid_resolution * 1000 + GLOBAL_UPPER_LEFT_COL
+
+        lng_coord, lat_coord, _ = coord_transform.TransformPoint(
+            col_coord, row_coord)
+        write_to_file(','.join(split_line[0:2]) + ',%d-%d,' % (grid_row_index, grid_col_index) + ','.join(split_line[3:11]) +',%f,%f,' % (lat_coord, lng_coord)+','.join(split_line[14:19]))
+
+#        print ','.join(split_line[0:11]), ',%f,%f,' % (lat_coord, lng_coord), ','.join(split_line[14:19]),
+
         for (_, header), band, ds, nodata in zip(clipped_raster_list, band_list, dataset_list, nodata_list):
-            n_rows = band.YSize
-            grid_resolution = 100 #100km
+
             gt = ds.GetGeoTransform()
-            n_rows_grid = int(-gt[5] * n_rows / (grid_resolution * 1000.0))
+            n_rows = ds.RasterYSize
+            n_cols = ds.RasterXSize
                
             xoff = int(grid_col_index * (grid_resolution * 1000.0) / (gt[1]))
             yoff = int(grid_row_index * (grid_resolution * 1000.0) / (-gt[5]))
             win_xsize = int((grid_resolution * 1000.0) / (gt[1]))
             win_ysize = int((grid_resolution * 1000.0) / (gt[1]))
 
+            if xoff + win_xsize > n_cols:
+                win_xsize = n_cols - xoff
+            if yoff + win_ysize > n_rows:
+                win_ysize = n_rows - yoff
+
             block = band.ReadAsArray(
                 xoff=xoff, yoff=yoff, win_xsize=win_xsize, win_ysize=win_ysize)
             block_average = numpy.average(block[block != nodata])
-            sys.stdout.write(',%f' % block_average)
+            #sys.stdout.write(',%f' % block_average)
+            write_to_file(',%f' % block_average)
             #print block_average, header, grid_row_index, grid_col_index
-        print ''
+        write_to_file('\n')
 
 if __name__ == '__main__':
     average_layers()
