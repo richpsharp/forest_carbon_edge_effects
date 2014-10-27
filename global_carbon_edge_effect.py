@@ -62,6 +62,10 @@ def _make_magnitude_maps(base_uri, table_uri):
     driver = gdal.GetDriverByName('GTiff')
 
     gt = base_ds.GetGeoTransform()
+    #gt = (
+    #    GLOBAL_UPPER_LEFT_COL, gt[1], gt[2],
+    #    GLOBAL_UPPER_LEFT_ROW, gt[4], gt[5]
+    #)
 
     n_rows = base_ds.RasterYSize
     n_cols = base_ds.RasterXSize
@@ -403,11 +407,9 @@ if __name__ == '__main__':
         #    "C:/Users/rich/Desktop/forest_edge_output/%s_forest_edge.tif" % PREFIX,
         #    "C:/Users/rich/Desktop/forest_edge_output/%s_biomass_aligned.tif" % PREFIX)
 
-    BASE_URI = "C:/Users/rich/Desktop/forest_edge_output/af_biomass_aligned.tif"
-    TABLE_URI = "C:/Users/rich/Desktop/forest_edge_output/all_grid_results_100km_clean.csv"
+    BASE_URI = "C:/Users/rich/Desktop/am_biov2ct1.tif"
+    TABLE_URI = "C:/Users/rich/Desktop/all_grid_results_100km_clean.csv"
     _make_magnitude_maps(BASE_URI, TABLE_URI)
-
-
 
     raster_utils.email_report(
         "done with global_carbon_edge_effect.py", "3152624786@txt.att.net")
