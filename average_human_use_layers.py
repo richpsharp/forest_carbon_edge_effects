@@ -14,10 +14,10 @@ from invest_natcap import raster_utils
 GLOBAL_UPPER_LEFT_ROW = -2602195.7925872812047601
 GLOBAL_UPPER_LEFT_COL = -11429693.3490753173828125
 
-base_table_uri = "C:/Users/rich/Desktop/average_layers_projected/all_grid_results_100km_clean_2.csv"
 
 def average_layers():
 
+    base_table_uri = "C:/Users/rich/Desktop/all_grid_results_100km_clean_v2.csv"
     base_table_file = open(base_table_uri, 'rU')
     table_header = base_table_file.readline()
 
@@ -33,7 +33,7 @@ def average_layers():
     #    [af_uri, am_uri, as_uri], lambda x,y,z: x+y+z, giant_layer_uri, gdal.GDT_Float32,
     #    -1, cell_size, 'union', vectorize_op=False)
 
-    table_uri = "C:/Users/rich/Desktop/average_layers_projected/all_grid_results_100km_clean.csv"
+    table_uri = base_table_uri
     table_file = open(table_uri, 'rU')
     
     table_header = table_file.readline().rstrip()
@@ -53,26 +53,26 @@ def average_layers():
         ("C:/Users/rich/Desktop/average_layers_projected/glbshd1t0503m.tif", 'FAO_Sheep'),
         ("C:/Users/rich/Desktop/average_layers_projected/glds00ag.tif", 'Human population density AG'),
         ("C:/Users/rich/Desktop/average_layers_projected/glds00g.tif", 'Human population density G'),
-        ('C:/Users/rich/Desktop/average_layers_projected/anthrome_11.tif', '11: Urban, Dense settlement'),
-        ('C:/Users/rich/Desktop/average_layers_projected/anthrome_12.tif', '12: Dense settlements, Dense settlements'),
-        ('C:/Users/rich/Desktop/average_layers_projected/anthrome_22.tif', '22: Irrigated villages, Villages'),
-        ('C:/Users/rich/Desktop/average_layers_projected/anthrome_23.tif', '23: Cropped & pastoral villages,    Villages'),
-        ('C:/Users/rich/Desktop/average_layers_projected/anthrome_24.tif', '24: Pastoral villages, Villages'),
-        ('C:/Users/rich/Desktop/average_layers_projected/anthrome_25.tif', '25: Rainfed villages, Villages'),
-        ('C:/Users/rich/Desktop/average_layers_projected/anthrome_26.tif', '26: Rainfed mosaic villages, Villages'),
-        ('C:/Users/rich/Desktop/average_layers_projected/anthrome_31.tif', '31: Residential irrigated cropland, Croplands'),
-        ('C:/Users/rich/Desktop/average_layers_projected/anthrome_32.tif', '32: Residential rainfed mosaic, Croplands'),
-        ('C:/Users/rich/Desktop/average_layers_projected/anthrome_33.tif', '33: Populated irrigated cropland,   Croplands'),
-        ('C:/Users/rich/Desktop/average_layers_projected/anthrome_34.tif', '34: Populated rainfed cropland, Croplands'),
-        ('C:/Users/rich/Desktop/average_layers_projected/anthrome_35.tif', '35: Remote croplands, Croplands'),
-        ('C:/Users/rich/Desktop/average_layers_projected/anthrome_41.tif', '41: Residential rangelands, Rangelands'),
-        ('C:/Users/rich/Desktop/average_layers_projected/anthrome_42.tif', '42: Populated rangelands, Rangelands'),
-        ('C:/Users/rich/Desktop/average_layers_projected/anthrome_43.tif', '43: Remote rangelands, Rangelands'),
-        ('C:/Users/rich/Desktop/average_layers_projected/anthrome_51.tif', '51: Populated forests, Forested'),
-        ('C:/Users/rich/Desktop/average_layers_projected/anthrome_52.tif', '52: Remote forests, Forested'),
-        ('C:/Users/rich/Desktop/average_layers_projected/anthrome_61.tif', '61: Wild forests, Wildlands'),
-        ('C:/Users/rich/Desktop/average_layers_projected/anthrome_62.tif', '62: Sparse trees, Wildlands'),
-        ('C:/Users/rich/Desktop/average_layers_projected/anthrome_63.tif', '63: Barren, Wildlands'),
+        ('C:/Users/rich/Desktop/average_layers_projected/anthrome_11.tif', '"11: Urban, Dense settlement"'),
+        ('C:/Users/rich/Desktop/average_layers_projected/anthrome_12.tif', '"12: Dense settlements, Dense settlements"'),
+        ('C:/Users/rich/Desktop/average_layers_projected/anthrome_22.tif', '"22: Irrigated villages, Villages"'),
+        ('C:/Users/rich/Desktop/average_layers_projected/anthrome_23.tif', '"23: Cropped & pastoral villages, Villages"'),
+        ('C:/Users/rich/Desktop/average_layers_projected/anthrome_24.tif', '"24: Pastoral villages, Villages"'),
+        ('C:/Users/rich/Desktop/average_layers_projected/anthrome_25.tif', '"25: Rainfed villages, Villages"'),
+        ('C:/Users/rich/Desktop/average_layers_projected/anthrome_26.tif', '"26: Rainfed mosaic villages, Villages"'),
+        ('C:/Users/rich/Desktop/average_layers_projected/anthrome_31.tif', '"31: Residential irrigated cropland, Croplands"'),
+        ('C:/Users/rich/Desktop/average_layers_projected/anthrome_32.tif', '"32: Residential rainfed mosaic, Croplands"'),
+        ('C:/Users/rich/Desktop/average_layers_projected/anthrome_33.tif', '"33: Populated irrigated cropland,   Croplands"'),
+        ('C:/Users/rich/Desktop/average_layers_projected/anthrome_34.tif', '"34: Populated rainfed cropland, Croplands"'),
+        ('C:/Users/rich/Desktop/average_layers_projected/anthrome_35.tif', '"35: Remote croplands, Croplands"'),
+        ('C:/Users/rich/Desktop/average_layers_projected/anthrome_41.tif', '"41: Residential rangelands, Rangelands"'),
+        ('C:/Users/rich/Desktop/average_layers_projected/anthrome_42.tif', '"42: Populated rangelands, Rangelands"'),
+        ('C:/Users/rich/Desktop/average_layers_projected/anthrome_43.tif', '"43: Remote rangelands, Rangelands"'),
+        ('C:/Users/rich/Desktop/average_layers_projected/anthrome_51.tif', '"51: Populated forests, Forested"'),
+        ('C:/Users/rich/Desktop/average_layers_projected/anthrome_52.tif', '"52: Remote forests, Forested"'),
+        ('C:/Users/rich/Desktop/average_layers_projected/anthrome_61.tif', '"61: Wild forests, Wildlands"'),
+        ('C:/Users/rich/Desktop/average_layers_projected/anthrome_62.tif', '"62: Sparse trees, Wildlands"'),
+        ('C:/Users/rich/Desktop/average_layers_projected/anthrome_63.tif', '"63: Barren, Wildlands"'),
         ]
 
     clipped_raster_list = []
@@ -104,7 +104,7 @@ def average_layers():
     #print table_header + ',' + extended_table_headers
 
     for line in table_file:
-        split_line = line.split(',')
+        split_line = line.rstrip().split(',')
         grid_id = split_line[2]
     #for grid_id in lookup_table:
         try:
@@ -142,7 +142,7 @@ def average_layers():
 
         lng_coord, lat_coord, _ = coord_transform.TransformPoint(
             col_coord, row_coord)
-        write_to_file(','.join(split_line[0:2]) + ',%d-%d,' % (grid_row_index, grid_col_index) + ','.join(split_line[3:11]) +',%f,%f,' % (lat_coord, lng_coord)+','.join(split_line[14:19]))
+        write_to_file(','.join(split_line[0:2]) + ',%d-%d,' % (grid_row_index, grid_col_index) + ','.join(split_line[3:11]) +',%f,%f,' % (lat_coord, lng_coord)+','.join(split_line[13:]))
 
 #        print ','.join(split_line[0:11]), ',%f,%f,' % (lat_coord, lng_coord), ','.join(split_line[14:19]),
 
