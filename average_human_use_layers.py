@@ -11,7 +11,7 @@ import osr
 
 from invest_natcap import raster_utils
 
-GLOBAL_UPPER_LEFT_ROW = -2602195.7925872812047601
+GLOBAL_UPPER_LEFT_ROW = 2602195.7925872812047601
 GLOBAL_UPPER_LEFT_COL = -11429693.3490753173828125
 
 
@@ -41,7 +41,7 @@ def average_layers():
 
     lookup_table = raster_utils.get_lookup_from_csv(table_uri, 'ID100km')
 
-    out_table_uri =  "C:/Users/rich/Desktop/all_grid_results_100km_human.csv"
+    out_table_uri =  "C:/Users/rich/Desktop/all_grid_results_100km_human_elevation.csv"
     out_table_file = codecs.open(out_table_uri, 'w', 'utf-8')
 
     average_raster_list = [
@@ -73,6 +73,7 @@ def average_layers():
         ('C:/Users/rich/Desktop/average_layers_projected/anthrome_61.tif', '"61: Wild forests, Wildlands"'),
         ('C:/Users/rich/Desktop/average_layers_projected/anthrome_62.tif', '"62: Sparse trees, Wildlands"'),
         ('C:/Users/rich/Desktop/average_layers_projected/anthrome_63.tif', '"63: Barren, Wildlands"'),
+        ("C:/Users/rich/Desktop/average_layers_projected/5km_global_pantropic_dem.tif", '"Average Elevation"'),
         ]
 
     clipped_raster_list = []
@@ -82,9 +83,9 @@ def average_layers():
         print 'clipping ' + average_raster_uri
         clipped_raster_uri = os.path.join(os.path.dirname(average_raster_uri), 'temp', os.path.basename(average_raster_uri))
         cell_size = raster_utils.get_cell_size_from_uri(average_raster_uri)
-        #raster_utils.vectorize_datasets(
-        #    [average_raster_uri, giant_layer_uri], lambda x,y: x, clipped_raster_uri, gdal.GDT_Float32,
-        #    -1, cell_size, 'intersection', vectorize_op=False)
+        raster_utils.vectorize_datasets(
+            [average_raster_uri, giant_layer_uri], lambda x,y: x, clipped_raster_uri, gdal.GDT_Float32,
+            -1, cell_size, 'intersection', vectorize_op=False)
         clipped_raster_list.append((clipped_raster_uri, header))
 
     dataset_list = [gdal.Open(uri) for uri, label in clipped_raster_list]
@@ -144,8 +145,6 @@ def average_layers():
             col_coord, row_coord)
         write_to_file(','.join(split_line[0:2]) + ',%d-%d,' % (grid_row_index, grid_col_index) + ','.join(split_line[3:11]) +',%f,%f,' % (lat_coord, lng_coord)+','.join(split_line[13:]))
 
-#        print ','.join(split_line[0:11]), ',%f,%f,' % (lat_coord, lng_coord), ','.join(split_line[14:19]),
-
         for (_, header), band, ds, nodata in zip(clipped_raster_list, band_list, dataset_list, nodata_list):
 
             gt = ds.GetGeoTransform()
@@ -165,9 +164,7 @@ def average_layers():
             block = band.ReadAsArray(
                 xoff=xoff, yoff=yoff, win_xsize=win_xsize, win_ysize=win_ysize)
             block_average = numpy.average(block[block != nodata])
-            #sys.stdout.write(',%f' % block_average)
             write_to_file(',%f' % block_average)
-            #print block_average, header, grid_row_index, grid_col_index
         write_to_file('\n')
 
 if __name__ == '__main__':
