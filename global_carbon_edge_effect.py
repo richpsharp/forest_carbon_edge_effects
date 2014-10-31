@@ -20,7 +20,7 @@ LULC_BASE = '.tif'
 FOREST_LULCS = [1, 2, 3, 4, 5]
 
 #i calculated these values by loading all 3 rasters in qgis and manually writing down the bounding boxes and taking the extremes
-GLOBAL_UPPER_LEFT_ROW = -2602195.7925872812047601
+GLOBAL_UPPER_LEFT_ROW = 2602195.7925872812047601
 GLOBAL_UPPER_LEFT_COL = -11429693.3490753173828125
 
 def lowpriority():
@@ -72,7 +72,7 @@ def _make_magnitude_maps(base_uri, table_uri):
 
     lookup_table = raster_utils.get_lookup_from_csv(table_uri, 'ID100km')
     
-    for map_type in ['Magnitude', 'A80', 'A90', 'A95']:
+    for map_type in ['Magnitude', 'A80', 'A90', 'A95', 'Average Elevation']:
 
         output_dir, base_filename = os.path.split(base_uri)
         basename = os.path.basename(base_filename)
@@ -86,8 +86,35 @@ def _make_magnitude_maps(base_uri, table_uri):
             gt[0], grid_resolution * 1000.0, gt[2],
             gt[3], gt[4], -grid_resolution * 1000.0)
 
-        n_rows_grid = max([int(grid_cell.split('-')[0]) for grid_cell in lookup_table])
-        n_cols_grid = max([int(grid_cell.split('-')[1]) for grid_cell in lookup_table])
+        
+        
+        n_rows_grid = -1
+        n_cols_grid = -1
+        for grid_id in lookup_table:
+            try:
+                split_grid_id = grid_id.split('-')
+                grid_row_index, grid_col_index = map(int, split_grid_id)
+            except ValueError as e:
+                month_to_number = {
+                    'Jan': 1,
+                    'Feb': 2,
+                    'Mar': 3,
+                    'Apr': 4,
+                    'May': 5,
+                    'Jun': 6,
+                    'Jul': 7,
+                    'Aug': 8,
+                    'Sep': 9,
+                    'Oct': 10,
+                    'Nov': 11,
+                    'Dec': 12,
+                }
+                try:
+                    grid_row_index, grid_col_index = month_to_number[split_grid_id[0]], int(split_grid_id[1])
+                except KeyError as e:
+                    continue
+            n_rows_grid = max(n_rows_grid, grid_row_index)
+            n_cols_grid = max(n_cols_grid, grid_col_index)
 
         n_rows_grid += 1
         n_cols_grid += 1
@@ -109,7 +136,30 @@ def _make_magnitude_maps(base_uri, table_uri):
                 print "%s working..." % (map_type,)
                 last_time = current_time
 
-            grid_row_index, grid_col_index = map(int, grid_id.split('-'))
+
+            try:
+                split_grid_id = grid_id.split('-')
+                grid_row_index, grid_col_index = map(int, split_grid_id)
+            except ValueError as e:
+                month_to_number = {
+                    'Jan': 1,
+                    'Feb': 2,
+                    'Mar': 3,
+                    'Apr': 4,
+                    'May': 5,
+                    'Jun': 6,
+                    'Jul': 7,
+                    'Aug': 8,
+                    'Sep': 9,
+                    'Oct': 10,
+                    'Nov': 11,
+                    'Dec': 12,
+                }
+                try:
+                    grid_row_index, grid_col_index = month_to_number[split_grid_id[0]], int(split_grid_id[1])
+                except KeyError as e:
+                    continue
+            #grid_row_index, grid_col_index = map(int, grid_id.split('-'))
 
             try:            
                 output_band.WriteArray(
@@ -407,9 +457,13 @@ if __name__ == '__main__':
         #    "C:/Users/rich/Desktop/forest_edge_output/%s_forest_edge.tif" % PREFIX,
         #    "C:/Users/rich/Desktop/forest_edge_output/%s_biomass_aligned.tif" % PREFIX)
 
+
+    #_map_intensity(
+    #    "C:/Users/rich/Desktop/forest_edge_output/%s_forest_edge.tif" % PREFIX,
+    #    "C:/Users/rich/Desktop/forest_edge_output/%s_biomass_aligned.tif" % PREFIX)
+    
+
     BASE_URI = "C:/Users/rich/Desktop/am_biov2ct1.tif"
-    TABLE_URI = "C:/Users/rich/Desktop/all_grid_results_100km_clean.csv"
+    TABLE_URI = "C:/Users/rich/Desktop/all_grid_results_100km_human_v4.csv"
     _make_magnitude_maps(BASE_URI, TABLE_URI)
 
-    raster_utils.email_report(
-        "done with global_carbon_edge_effect.py", "3152624786@txt.att.net")
