@@ -8,22 +8,16 @@ import luigi
 
 from invest_natcap import raster_utils
 
-WORKSPACE = "C:/Users/rpsharp/Documents/carbon_edge_pipeline_workspace"
-UNION_BIOMASS_URI = os.path.join(WORKSPACE, "union_biomass.tif")
-UNION_LANDCOVER_URI = os.path.join(WORKSPACE, "union_landcover.tif")
-INTERSECT_BIOMASS_URI = os.path.join(WORKSPACE, "intersect_biomass.tif")
-INTERSECT_LANDCOVER_URI = os.path.join(WORKSPACE, "intersect_landcover.tif")
+DATA_DIR = "F:/Dropbox/forest_edge_carbon_data"
+OUTPUT_DIR = "E:/carbon_edge_pipeline"
+UNION_BIOMASS_URI = os.path.join(OUTPUT_DIR, "union_biomass.tif")
+UNION_LANDCOVER_URI = os.path.join(OUTPUT_DIR, "union_landcover.tif")
+INTERSECT_BIOMASS_URI = os.path.join(OUTPUT_DIR, "intersect_biomass.tif")
+INTERSECT_LANDCOVER_URI = os.path.join(OUTPUT_DIR, "intersect_landcover.tif")
 
-BIOMASS_RASTER_LIST = [
-    "C:/Users/rpsharp/Dropbox_stanford/Dropbox/forest_edge_carbon/af_biov2ct1.tif",
-    "C:/Users/rpsharp/Dropbox_stanford/Dropbox/forest_edge_carbon/am_biov2ct1.tif",
-    "C:/Users/rpsharp/Dropbox_stanford/Dropbox/forest_edge_carbon/as_biov2ct1.tif",
-]
-LANDCOVER_RASTER_LIST = [
-    "C:/Users/rpsharp/Dropbox_stanford/Dropbox/forest_edge_carbon/af.tif",
-    "C:/Users/rpsharp/Dropbox_stanford/Dropbox/forest_edge_carbon/as.tif",
-    "C:/Users/rpsharp/Dropbox_stanford/Dropbox/forest_edge_carbon/am.tif"
-]
+BIOMASS_RASTER_LIST = [os.path.join(DATA_DIR, '%s_biov2ct1.tif' % prefix) for prefix in ['af', 'am', 'as']]
+LANDCOVER_RASTER_LIST = [os.path.join(DATA_DIR, '%s.tif' % prefix) for prefix in ['af', 'am', 'as']]
+
 
 class VectorizeDatasetsTask(luigi.Task):
     dataset_uri_list = luigi.Parameter(is_list=True)
@@ -115,20 +109,104 @@ class IntersectLandcoverTask(luigi.Task):
     def output(self):
         return luigi.LocalTarget(INTERSECT_LANDCOVER_URI)
 
+class RasterizeEcoregion(luigi.Task):
+    ecoregion_dataset_uri = os.path.join(OUTPUT_DIR, "ecoregion_id.tif")
+
+    def requires(self):
+        return [IntersectBiomassTask(), IntersectLandcoverTask()]
+
+    def run(self):
+        ecoregion_shapefile_uri = os.path.join(
+            DATA_DIR, 'ecoregions', 'ecoregions_projected.shp')
+        ecoregion_lookup = raster_utils.extract_datasource_table_by_key(
+            ecoregion_shapefile_uri, 'ECO_ID_U')
+        ecoregion_nodata = -1
+        ecoregion_lookup[ecoregion_nodata] = {
+            'ECO_NAME': 'UNKNOWN',
+            'ECODE_NAME': 'UNKNOWN',
+            'WWF_MHTNAM': 'UNKNOWN',
+            }
+
+        #create ecoregion id
+        raster_utils.new_raster_from_base_uri(
+            INTERSECT_LANDCOVER_URI, self.ecoregion_dataset_uri, 'GTiff',
+            ecoregion_nodata, gdal.GDT_Int16)
+        raster_utils.rasterize_layer_uri(
+            self.ecoregion_dataset_uri, ecoregion_shapefile_uri,
+            option_list=["ATTRIBUTE=ECO_ID_U"])
+
+    def output(self):
+        return luigi.LocalTarget(self.ecoregion_dataset_uri)
+
+
+class CalculateForestEdge(luigi.Task):
+    forest_edge_distance_uri = os.path.join(
+            OUTPUT_DIR, "forest_edge_distance.tif")
+
+    def requires(self):
+        return IntersectLandcoverTask()
+
+    def run(self):
+        lulc_nodata = raster_utils.get_nodata_from_uri(INTERSECT_LANDCOVER_URI)
+
+        forest_lulc_codes = [1, 2, 3, 4, 5]
+
+        mask_uri = os.path.join(OUTPUT_DIR, "%s_mask.tif" % prefix)
+        mask_nodata = 2
+
+        def mask_nonforest(lulc):
+            mask = numpy.empty(lulc.shape, dtype=numpy.int8)
+            mask[:] = 1
+            for lulc_code in forest_lulc_codes:
+                mask[lulc == lulc_code] = 0
+            mask[lulc == lulc_nodata] = mask_nodata
+            return mask
+
+        cell_size = raster_utils.get_cell_size_from_uri(INTERSECT_LANDCOVER_URI)
+        raster_utils.vectorize_datasets(
+            [INTERSECT_LANDCOVER_URI,], mask_nonforest, mask_uri, gdal.GDT_Byte,
+            mask_nodata, cell_size, 'intersection', dataset_to_align_index=0,
+            dataset_to_bound_index=None, aoi_uri=None,
+            assert_datasets_projected=True, process_pool=None,
+            vectorize_op=False, datasets_are_pre_aligned=True)
+
+        raster_utils.distance_transform_edt(
+            mask_uri, self.forest_edge_distance_uri)
+
+    def output(self):
+        return luigi.LocalTarget(self.forest_edge_distance_uri)
+
+
+class ProcessEcoregionTask(luigi.Task):
+    biomass_stats_uri = os.path.join(OUTPUT_DIR, "biomass_stats.csv")
+
+    def requires(self):
+        return [CalculateForestEdge(), RasterizeEcoregion()]
+
+    def run(self):
+        pass
+        #_aggregate_results(
+        #    forest_edge_distance_uri, biomass_uri, ecoregion_dataset_uri,
+        #    ecoregion_lookup, biomass_stats_uri)
+
+    def output(self):
+        return luigi.LocalTarget(self.biomass_stats_uri)
+    
+
 class Runit(luigi.Task):
     def requires(self):
-        return [IntersectLandcoverTask(), IntersectBiomassTask()]
+        return ProcessEcoregionTask()
 
 
 if __name__ == '__main__':
     print '\n' * 10
-    if os.path.exists(WORKSPACE):
-        #shutil.rmtree(WORKSPACE)
+    if os.path.exists(OUTPUT_DIR):
+        #shutil.rmtree(OUTPUT_DIR)
         pass
     #runit = Runit()
     #scheduler = scheduler.CentralPlannerScheduler()
     #for _ in range(4):
     #    scheduler.add_worker(worker.Worker())
 
-    raster_utils.create_directories([WORKSPACE])
+    raster_utils.create_directories([OUTPUT_DIR])
     luigi.run()
