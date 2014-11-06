@@ -11,8 +11,10 @@ import luigi
 
 from invest_natcap import raster_utils
 
-DATA_DIR = "C:/Users/rpsharp/Dropbox_stanford/Dropbox/forest_edge_carbon_data"
-OUTPUT_DIR = "C:/Users/rpsharp/Documents/carbon_edge_pipeline_workspace"
+#DATA_DIR = "C:/Users/rpsharp/Dropbox_stanford/Dropbox/forest_edge_carbon_data"
+#OUTPUT_DIR = "C:/Users/rpsharp/Documents/carbon_edge_pipeline_workspace"
+DATA_DIR = "E:/dropboxcopy/forest_edge_carbon_data"
+OUTPUT_DIR = "E:/carbon_edge_pipeline"
 UNION_BIOMASS_URI = os.path.join(OUTPUT_DIR, "union_biomass.tif")
 UNION_LANDCOVER_URI = os.path.join(OUTPUT_DIR, "union_landcover.tif")
 GLOBAL_BIOMASS_URI = os.path.join(OUTPUT_DIR, "intersect_biomass.tif")
@@ -25,11 +27,19 @@ BIOMASS_STATS_URI = os.path.join(OUTPUT_DIR, "biomass_stats.csv")
 GRID_RESOLUTION_LIST = [100]
 PREFIX_LIST = ['af', 'am', 'as']
 
+
+
 BIOMASS_RASTER_LIST = [
     os.path.join(DATA_DIR, '%s_biov2ct1.tif' % prefix)
     for prefix in PREFIX_LIST]
 LANDCOVER_RASTER_LIST = [
     os.path.join(DATA_DIR, '%s.tif' % prefix) for prefix in PREFIX_LIST]
+
+for tmp_variable in ['TMP', 'TEMP', 'TMPDIR']:
+    if tmp_variable in os.environ:
+        print ('Updating os.environ["%s"]=%s to %s' % (tmp_variable, os.environ[tmp_variable], OUTPUT_DIR))
+    else:
+        print ('Setting os.environ["%s"]=%s' % (tmp_variable, OUTPUT_DIR))
 
 
 class VectorizeDatasetsTask(luigi.Task):
