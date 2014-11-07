@@ -27,16 +27,30 @@ ECOREGION_DATASET_URI = os.path.join(OUTPUT_DIR, "ecoregion_id.tif")
 ECOREGION_SHAPEFILE_URI = os.path.join(
     DATA_DIR, 'ecoregions', 'ecoregions_projected.shp')
 BIOMASS_STATS_URI = os.path.join(OUTPUT_DIR, "biomass_stats.csv")
+
+TOTAL_PRECIP_URI = os.path.join(OUTPUT_DIR, 'total_precip.tif')
+DRY_SEASON_LENGTH_URI = os.path.join(OUTPUT_DIR, 'dry_season_length.tif')
+GLOBAL_PRECIP_URI = os.path.join(DATA_DIR, "biophysical_layers", "global_precip.tiff")
+
 GRID_RESOLUTION_LIST = [100]
 
 BIOPHYSICAL_FILENAMES = [
-    "global_elevation.tiff", "global_precip.tiff", "global_soil_types.tiff", "global_water_capacity.tiff",]
+    "global_elevation.tiff", "global_soil_types.tiff", "global_water_capacity.tiff",]
+
+BIOPHYSICAL_NODATA = [
+    -9999, -99, 0, 11]
 
 BIOPHYSICAL_LAYERS = [
     os.path.join(DATA_DIR, 'biophysical_layers', uri) for uri in BIOPHYSICAL_FILENAMES]
 
 ALIGNED_BIOPHYSICAL_LAYERS = [
     os.path.join(OUTPUT_DIR, 'aligned_' + uri) for uri in BIOPHYSICAL_FILENAMES]
+
+OUT_PRECIP_URI = os.path.join(OUTPUT_DIR, 'aligned_' + os.path.basename(TOTAL_PRECIP_URI))
+DRY_SEASON_LENGTH_URI = os.path.join(OUTPUT_DIR, 'aligned_' + os.path.basename(DRY_SEASON_LENGTH_URI))
+
+ALIGNED_BIOPHYSICAL_LAYERS.append(OUT_PRECIP_URI)
+ALIGNED_BIOPHYSICAL_LAYERS.append(DRY_SEASON_LENGTH_URI)
 
 PREFIX_LIST = ['af', 'am', 'as']
 
@@ -170,14 +184,14 @@ class IntersectBiophysicalLayer(luigi.Task):
         if nodata is None:
             nodata = -9999
         cell_size = raster_utils.get_cell_size_from_uri(GLOBAL_BIOMASS_URI)
-        output_uri = os.path.join(DATA_DIR, 'aligned_' + os.path.basename(self.biophysical_uri))
+        output_uri = os.path.join(OUTPUT_DIR, 'aligned_' + os.path.basename(self.biophysical_uri))
         raster_utils.vectorize_datasets(
             [self.biophysical_uri, GLOBAL_BIOMASS_URI], lambda x, y: x,
             output_uri, gdal.GDT_Float32, nodata, cell_size, "dataset",
             dataset_to_bound_index=1, vectorize_op=False)
 
     def output(self):
-        output_uri = os.path.join(DATA_DIR, 'aligned_' + os.path.basename(self.biophysical_uri))
+        output_uri = os.path.join(OUTPUT_DIR, 'aligned_' + os.path.basename(self.biophysical_uri))
         return luigi.LocalTarget(output_uri)
 
 
@@ -335,14 +349,75 @@ class ProcessEcoregionTask(luigi.Task):
     def output(self):
         return luigi.LocalTarget(BIOMASS_STATS_URI)
     
+class CalculateTotalPrecip(luigi.Task):
+
+    def run(self):
+        precip_ds = gdal.Open(GLOBAL_PRECIP_URI)
+        base_band = precip_ds.GetRasterBand(1)
+        block_size = base_band.GetBlockSize()
+        nodata = base_band.GetNoDataValue()
+        band_list = [ds.GetRasterBand(index+1) for index in xrange(12)]
+
+        total_precip_ds = raster_utils.new_raster_from_base(
+            precip_ds, TOTAL_PRECIP_URI, 'GTiff', nodata,
+            gdal.GDT_Float32)
+        total_precip_band = total_precip_ds.GetRasterBand(1)
+
+        dry_season_length_ds = raster_utils.new_raster_from_base(
+            precip_ds, DRY_SEASON_LENGTH_URI, 'GTiff', nodata,
+            gdal.GDT_Float32)
+        dry_season_length_band = dry_season_length_ds.GetRasterBand(1)
+
+        cols_per_block, rows_per_block = block_size[0], block_size[1]
+        n_col_blocks = int(math.ceil(n_cols / float(cols_per_block)))
+        n_row_blocks = int(math.ceil(n_rows / float(rows_per_block)))
+        for row_block_index in xrange(n_row_blocks):
+            row_offset = row_block_index * rows_per_block
+            row_block_width = min(n_rows - row_offset, rows_per_block)
+            
+            for col_block_index in xrange(n_col_blocks):
+                col_offset = col_block_index * cols_per_block
+                col_block_width = min(n_cols - col_offset, cols_per_block)
+
+                array_list = []
+                for band in band_list:
+                    array_list.append(band.ReadAsArray(
+                        xoff=col_offset, yoff=row_offset, win_xsize=col_block_width,
+                        win_ysize=row_block_width)
+                valid_mask = array_list[0] != nodata
+                dry_season_length = numpy.zeros(array_list[0].shape)
+                total_precip = numpy.zeros(array_list[0].shape)
+                for array in array_list:
+                    dry_season_length += array < 60 #less than 60mm is dry season
+                    total_precip += array
+            dry_season_length[~valid_mask] = nodata
+            total_precip[~valid_mask] = nodata
+            dry_season_length_band.WriteArray(
+                dry_season_length, xoff=col_offset, yoff=row_offset)
+            total_precip_band.WriteArray(
+                total_precip, xoff=col_offset, yoff=row_offset)
+
+        yield IntersectBiophysicalLayer(TOTAL_PRECIP_URI)
+        yield IntersectBiophysicalLayer(DRY_SEASON_LENGTH_URI)
+
+
+    def output(self):
+        return [
+            luigi.LocalTarget(TOTAL_PRECIP_URI),
+            luigi.LocalTarget(DRY_SEASON_LENGTH_URI)]
+
 class ProcessGridCellLevelStats(luigi.Task):
     grid_output_file_list = [
         os.path.join(OUTPUT_DIR, 'grid_stats_%d.csv' % resolution)
         for resolution in GRID_RESOLUTION_LIST]
 
+    out_precip_uri = os.path.join(OUTPUT_DIR, 'aligned_' + os.path.basename(TOTAL_PRECIP_URI))
+    dry_season_length_uri = os.path.join(OUTPUT_DIR, 'aligned_' + os.path.basename(DRY_SEASON_LENGTH_URI))
+
     def requires(self):
         for biophysical_uri in BIOPHYSICAL_LAYERS:
             yield IntersectBiophysicalLayer(biophysical_uri)
+        yield CalculateTotalPrecip()
         yield IntersectBiomassTask()
 
     def run(self):
