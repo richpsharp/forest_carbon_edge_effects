@@ -359,7 +359,7 @@ class CalculateTotalPrecip(luigi.Task):
         base_band = precip_ds.GetRasterBand(1)
         block_size = base_band.GetBlockSize()
         nodata = -99
-        band_list = [ds.GetRasterBand(index+1) for index in xrange(12)]
+        band_list = [precip_ds.GetRasterBand(index+1) for index in xrange(12)]
 
         total_precip_ds = raster_utils.new_raster_from_base(
             precip_ds, TOTAL_PRECIP_URI, 'GTiff', nodata,
@@ -370,7 +370,8 @@ class CalculateTotalPrecip(luigi.Task):
             precip_ds, DRY_SEASON_LENGTH_URI, 'GTiff', nodata,
             gdal.GDT_Float32)
         dry_season_length_band = dry_season_length_ds.GetRasterBand(1)
-
+        n_cols = dry_season_length_band.XSize
+        n_rows = dry_season_length_band.YSize
         cols_per_block, rows_per_block = block_size[0], block_size[1]
         n_col_blocks = int(math.ceil(n_cols / float(cols_per_block)))
         n_row_blocks = int(math.ceil(n_rows / float(rows_per_block)))
