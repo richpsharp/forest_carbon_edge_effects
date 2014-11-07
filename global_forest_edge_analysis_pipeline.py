@@ -13,8 +13,11 @@ from invest_natcap import raster_utils
 
 #DATA_DIR = "C:/Users/rpsharp/Dropbox_stanford/Dropbox/forest_edge_carbon_data"
 #OUTPUT_DIR = "C:/Users/rpsharp/Documents/carbon_edge_pipeline_workspace"
-DATA_DIR = "E:/dropboxcopy/forest_edge_carbon_data"
-OUTPUT_DIR = "E:/carbon_edge_pipeline"
+#DATA_DIR = "E:/dropboxcopy/forest_edge_carbon_data"
+#OUTPUT_DIR = "E:/carbon_edge_pipeline"
+DATA_DIR = "C:/Users/rich/Documents/Dropbox/forest_edge_carbon_data"
+OUTPUT_DIR = "C:/Users/rich/Documents/carbon_edge_pipeline"
+
 UNION_BIOMASS_URI = os.path.join(OUTPUT_DIR, "union_biomass.tif")
 UNION_LANDCOVER_URI = os.path.join(OUTPUT_DIR, "union_landcover.tif")
 GLOBAL_BIOMASS_URI = os.path.join(OUTPUT_DIR, "intersect_biomass.tif")
@@ -25,8 +28,17 @@ ECOREGION_SHAPEFILE_URI = os.path.join(
     DATA_DIR, 'ecoregions', 'ecoregions_projected.shp')
 BIOMASS_STATS_URI = os.path.join(OUTPUT_DIR, "biomass_stats.csv")
 GRID_RESOLUTION_LIST = [100]
-PREFIX_LIST = ['af', 'am', 'as']
 
+BIOPHYSICAL_FILENAMES = [
+    "global_elevation.tiff", "global_precip.tiff", "global_soil_types.tiff", "global_water_capacity.tiff",]
+
+BIOPHYSICAL_LAYERS = [
+    os.path.join(DATA_DIR, 'biophysical_layers', uri) for uri in BIOPHYSICAL_FILENAMES]
+
+ALIGNED_BIOPHYSICAL_LAYERS = [
+    os.path.join(OUTPUT_DIR, 'aligned_' + uri) for uri in BIOPHYSICAL_FILENAMES]
+
+PREFIX_LIST = ['af', 'am', 'as']
 
 
 BIOMASS_RASTER_LIST = [
@@ -146,6 +158,26 @@ class IntersectLandcoverTask(luigi.Task):
 
     def output(self):
         return luigi.LocalTarget(GLOBAL_LANDCOVER_URI)
+
+
+class IntersectBiophysicalLayer(luigi.Task):
+    biophysical_uri = luigi.Parameter()
+    def requires(self):
+        return IntersectBiomassTask()
+
+    def run(self):
+        nodata = raster_utils.get_nodata_from_uri(GLOBAL_BIOMASS_URI)
+        cell_size = raster_utils.get_cell_size_from_uri(GLOBAL_BIOMASS_URI)
+        output_uri = os.path.join(DATA_DIR, 'aligned_' + os.path.basename(self.biophysical_uri))
+        raster_utils.vectorize_datasets(
+            [self.biophysical_uri, GLOBAL_BIOMASS_URI], lambda x, y: x,
+            output_uri, gdal.GDT_Float32, nodata, cell_size, "dataset",
+            dataset_to_bound_index=1, vectorize_op=False)
+
+    def output(self):
+        output_uri = os.path.join(DATA_DIR, 'aligned_' + os.path.basename(self.biophysical_uri))
+        return luigi.LocalTarget(output_uri)
+
 
 class RasterizeEcoregion(luigi.Task):
     def requires(self):
@@ -307,7 +339,9 @@ class ProcessGridCellLevelStats(luigi.Task):
         for resolution in GRID_RESOLUTION_LIST]
 
     def requires(self):
-        return IntersectBiomassTask()
+        for biophysical_uri in BIOPHYSICAL_LAYERS:
+            yield IntersectBiophysicalLayer(biophysical_uri)
+        yield IntersectBiomassTask()
 
     def run(self):
         biomass_ds = gdal.Open(GLOBAL_BIOMASS_URI, gdal.GA_ReadOnly)
@@ -321,15 +355,25 @@ class ProcessGridCellLevelStats(luigi.Task):
 
         grid_coordinates = dict((resolution, {}) for resolution in GRID_RESOLUTION_LIST)
 
+        dataset_list = [gdal.Open(uri) for uri in ALIGNED_BIOPHYSICAL_LAYERS]
+        band_list = [ds.GetRasterBand(1) for ds in dataset_list]
+        nodata_list = [band.GetNoDataValue() for band in band_list]
+
         for global_grid_resolution, grid_output_filename in zip(GRID_RESOLUTION_LIST, self.grid_output_file_list):
             grid_output_file = open(grid_output_filename, 'w')
-            grid_output_file.write('grid id,lat_coord,lng_coord\n')
+            grid_output_file.write('grid id,lat_coord,lng_coord')
+            for biophysical_filename in BIOPHYSICAL_FILENAMES:
+                grid_output_file.write(',%s' % os.path.splitext[0])
+            grid_output_file.write('\n')
 
             n_grid_rows = int(
                 (-gt[5] * n_rows) / (global_grid_resolution * 1000))
             n_grid_cols = int(
                 (gt[1] * n_cols) / (global_grid_resolution * 1000))
-            print n_grid_rows, n_grid_cols
+
+            grid_row_stepsize = int(n_rows / float(n_grid_rows))
+            grid_col_stepsize = int(n_cols / float(n_grid_cols))
+
             for grid_row in xrange(n_grid_rows):
                 for grid_col in xrange(n_grid_cols):
                     grid_id = '%d-%d' % (grid_row, grid_col)
@@ -337,7 +381,20 @@ class ProcessGridCellLevelStats(luigi.Task):
                     grid_col_center = (grid_col + 0.5) * (global_grid_resolution*1000) + gt[0]
                     grid_lng_coord, grid_lat_coord, _ = coord_transform.TransformPoint(
                         grid_col_center, grid_row_center)
-                    grid_output_file.write('%s,%s,%s\n' % (grid_id, grid_lat_coord, grid_lng_coord))
+                    grid_output_file.write('%s,%s,%s' % (grid_id, grid_lat_coord, grid_lng_coord))
+
+                    global_row = grid_row * grid_row_stepsize
+                    global_col = grid_col * grid_col_stepsize
+
+                    global_col_size = min(grid_col_stepsize, n_cols - global_col)
+                    global_row_size = min(grid_row_stepsize, n_rows - global_row)
+
+                    for band, nodata in (band_list, nodata_list):
+                        array = band.ReadAsArray(
+                            global_col, global_row, global_col_size, global_row_size)
+                        value = numpy.average(array[array != nodata])
+                        grid_output_file.write(',%f' % value)
+
             grid_output_file.close()
 
     def output(self):
