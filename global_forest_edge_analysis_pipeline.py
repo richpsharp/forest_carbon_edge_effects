@@ -166,7 +166,7 @@ class IntersectBiophysicalLayer(luigi.Task):
         return IntersectBiomassTask()
 
     def run(self):
-        nodata = raster_utils.get_nodata_from_uri(biophysical_uri)
+        nodata = raster_utils.get_nodata_from_uri(self.biophysical_uri)
         cell_size = raster_utils.get_cell_size_from_uri(GLOBAL_BIOMASS_URI)
         output_uri = os.path.join(DATA_DIR, 'aligned_' + os.path.basename(self.biophysical_uri))
         raster_utils.vectorize_datasets(
