@@ -11,12 +11,12 @@ import luigi
 
 from invest_natcap import raster_utils
 
-#DATA_DIR = "C:/Users/rpsharp/Dropbox_stanford/Dropbox/forest_edge_carbon_data"
-#OUTPUT_DIR = "C:/Users/rpsharp/Documents/carbon_edge_pipeline_workspace"
+DATA_DIR = "C:/Users/rpsharp/Dropbox_stanford/Dropbox/forest_edge_carbon_data"
+OUTPUT_DIR = "C:/Users/rpsharp/Documents/carbon_edge_pipeline_workspace"
 #DATA_DIR = "E:/dropboxcopy/forest_edge_carbon_data"
 #OUTPUT_DIR = "E:/carbon_edge_pipeline"
-DATA_DIR = "C:/Users/rich/Documents/Dropbox/forest_edge_carbon_data"
-OUTPUT_DIR = "C:/Users/rich/Documents/carbon_edge_pipeline"
+#DATA_DIR = "C:/Users/rich/Documents/Dropbox/forest_edge_carbon_data"
+#OUTPUT_DIR = "C:/Users/rich/Documents/carbon_edge_pipeline"
 
 UNION_BIOMASS_URI = os.path.join(OUTPUT_DIR, "union_biomass.tif")
 UNION_LANDCOVER_URI = os.path.join(OUTPUT_DIR, "union_landcover.tif")
