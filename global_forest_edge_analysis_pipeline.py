@@ -456,6 +456,8 @@ class ProcessGridCellLevelStats(luigi.Task):
         coord_transform = osr.CoordinateTransformation(
             base_srs, lat_lng_srs)
         gt = biomass_ds.GetGeoTransform()
+        biomass_band = biomass_ds.GetRasterBand(1)
+        biomass_nodata = biomass_band.GetNoDataValue()
 
         average_dataset_list = [gdal.Open(uri) for uri in ALIGNED_LAYERS_TO_AVERAGE]
         average_band_list = [ds.GetRasterBand(1) for ds in average_dataset_list]
@@ -482,6 +484,17 @@ class ProcessGridCellLevelStats(luigi.Task):
 
             for grid_row in xrange(n_grid_rows):
                 for grid_col in xrange(n_grid_cols):
+                    
+                    #first check to make sure there is biomass at all!
+                    global_row = grid_row * grid_row_stepsize
+                    global_col = grid_col * grid_col_stepsize
+                    global_col_size = min(grid_col_stepsize, n_cols - global_col)
+                    global_row_size = min(grid_row_stepsize, n_rows - global_row)
+                    array = biomass_band.ReadAsArray(
+                        global_col, global_row, global_col_size, global_row_size)
+                    if numpy.count_nonzero(array != biomass_nodata) == 0:
+                        continue
+
                     grid_id = '%d-%d' % (grid_row, grid_col)
                     grid_row_center = -(grid_row + 0.5) * (global_grid_resolution*1000) + gt[3]
                     grid_col_center = (grid_col + 0.5) * (global_grid_resolution*1000) + gt[0]
@@ -489,11 +502,6 @@ class ProcessGridCellLevelStats(luigi.Task):
                         grid_col_center, grid_row_center)
                     grid_output_file.write('%s,%s,%s' % (grid_id, grid_lat_coord, grid_lng_coord))
 
-                    global_row = grid_row * grid_row_stepsize
-                    global_col = grid_col * grid_col_stepsize
-
-                    global_col_size = min(grid_col_stepsize, n_cols - global_col)
-                    global_row_size = min(grid_row_stepsize, n_rows - global_row)
 
                     #take the average values
                     for band, nodata in (average_band_list, average_nodata_list):
