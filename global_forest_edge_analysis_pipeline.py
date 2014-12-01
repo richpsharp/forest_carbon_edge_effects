@@ -421,18 +421,23 @@ class CalculateTotalPrecip(luigi.Task):
                 dry_season_length, xoff=col_offset, yoff=row_offset)
             total_precip_band.WriteArray(
                 total_precip, xoff=col_offset, yoff=row_offset)
+        
         total_precip_band.FlushCache()
         total_precip_band = None
+        gdal.Dataset.__swig_destroy__(total_precip_ds)
+        total_precip_ds = None
         dry_season_length_band.FlushCache()
         dry_season_length_band = None
+        gdal.Dataset.__swig_destroy__(dry_season_length_ds)
+        dry_season_length_ds = None
 
         _align_raster_with_biomass(DRY_SEASON_LENGTH_URI, ALIGNED_DRY_SEASON_LENGTH_URI)
         _align_raster_with_biomass(TOTAL_PRECIP_URI, ALIGNED_TOTAL_PRECIP_URI)
 
     def output(self):
         return [
-            luigi.LocalTarget(TOTAL_PRECIP_URI),
-            luigi.LocalTarget(DRY_SEASON_LENGTH_URI)]
+            luigi.LocalTarget(ALIGNED_TOTAL_PRECIP_URI),
+            luigi.LocalTarget(ALIGNED_DRY_SEASON_LENGTH_URI)]
 
 
 class ProcessGridCellLevelStats(luigi.Task):
