@@ -19,6 +19,7 @@ from invest_natcap import raster_utils
 #OUTPUT_DIR = "E:/carbon_edge_pipeline"
 DATA_DIR = "C:/Users/rich/Documents/Dropbox/forest_edge_carbon_data"
 OUTPUT_DIR = "C:/Users/rich/Documents/carbon_edge_pipeline"
+AVERAGE_LAYERS_DIRECTORY = "C:/Users/rich/Documents/Dropbox/average_layers_projected"
 
 UNION_BIOMASS_URI = os.path.join(OUTPUT_DIR, "union_biomass.tif")
 UNION_LANDCOVER_URI = os.path.join(OUTPUT_DIR, "union_landcover.tif")
@@ -37,22 +38,26 @@ GLOBAL_PRECIP_URI = os.path.join(DATA_DIR, "biophysical_layers", "global_precip.
 GRID_RESOLUTION_LIST = [100]
 
 BIOPHYSICAL_FILENAMES = [
-    "global_elevation.tiff", "global_soil_types.tiff", "global_water_capacity.tiff",]
-
+    "global_elevation.tiff", "global_water_capacity.tiff",]
 BIOPHYSICAL_NODATA = [
-    -9999, 0, 11]
+    -9999, 11]
 
-BIOPHYSICAL_LAYERS = [
+GLOBAL_SOIL_TYPES_URI = "global_soil_types.tiff"
+
+LAYERS_TO_AVERAGE = [
     os.path.join(DATA_DIR, 'biophysical_layers', uri) for uri in BIOPHYSICAL_FILENAMES]
 
-ALIGNED_BIOPHYSICAL_LAYERS = [
-    os.path.join(OUTPUT_DIR, 'aligned_' + uri) for uri in BIOPHYSICAL_FILENAMES]
+#add along all the other layers that we manually extracted or rasterized into that directory
+LAYERS_TO_AVERAGE.append(glob.glob(os.path.join(AVERAGE_LAYERS_DIRECTORY, '*.tif')))
+
+ALIGNED_LAYERS_TO_AVERAGE = [
+    os.path.join(OUTPUT_DIR, 'aligned_' + uri) for uri in LAYERS_TO_AVERAGE]
 
 ALIGNED_TOTAL_PRECIP_URI = os.path.join(OUTPUT_DIR, 'aligned_' + os.path.basename(TOTAL_PRECIP_URI))
 ALIGNED_DRY_SEASON_LENGTH_URI = os.path.join(OUTPUT_DIR, 'aligned_' + os.path.basename(DRY_SEASON_LENGTH_URI))
 
-ALIGNED_BIOPHYSICAL_LAYERS.append(ALIGNED_TOTAL_PRECIP_URI)
-ALIGNED_BIOPHYSICAL_LAYERS.append(ALIGNED_DRY_SEASON_LENGTH_URI)
+ALIGNED_LAYERS_TO_AVERAGE.append(ALIGNED_TOTAL_PRECIP_URI)
+ALIGNED_LAYERS_TO_AVERAGE.append(ALIGNED_DRY_SEASON_LENGTH_URI)
 
 PREFIX_LIST = ['af', 'am', 'as']
 
@@ -425,8 +430,9 @@ class ProcessGridCellLevelStats(luigi.Task):
         for resolution in GRID_RESOLUTION_LIST]
 
     def requires(self):
-        for biophysical_uri in BIOPHYSICAL_LAYERS:
+        for biophysical_uri in LAYERS_TO_AVERAGE + [GLOBAL_SOIL_TYPES_URI,]:
             yield AlignBiophysicalLayer(biophysical_uri)
+
         yield CalculateTotalPrecip()
         yield IntersectBiomassTask()
 
@@ -442,7 +448,7 @@ class ProcessGridCellLevelStats(luigi.Task):
 
         grid_coordinates = dict((resolution, {}) for resolution in GRID_RESOLUTION_LIST)
 
-        dataset_list = [gdal.Open(uri) for uri in ALIGNED_BIOPHYSICAL_LAYERS]
+        dataset_list = [gdal.Open(uri) for uri in ALIGNED_LAYERS_TO_AVERAGE]
         band_list = [ds.GetRasterBand(1) for ds in dataset_list]
         nodata_list = [band.GetNoDataValue() for band in band_list]
 
