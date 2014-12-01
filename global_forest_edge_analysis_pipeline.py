@@ -2,12 +2,13 @@ import os
 import shutil
 import math
 import time
+import glob
 
 import dill as pickle
 import gdal
 import osr
 import numpy
-import scipy
+import scipy.stats
 import luigi
 
 from invest_natcap import raster_utils
@@ -56,18 +57,18 @@ LAYERS_TO_MAX = [os.path.join(DATA_DIR, GLOBAL_SOIL_TYPES_URI)]
 
 #these are the biophysical layers i downloaded from the ornl website
 LAYERS_TO_AVERAGE = [
-    os.path.join(DATA_DIR, 'biophysical_layers', uri) for uri in BIOPHYSICAL_FILENAMES]
+    os.path.join(DATA_DIR, 'biophysical_layers', URI) for URI in BIOPHYSICAL_FILENAMES]
 #these are the human use layers becky sent me once
 LAYERS_TO_AVERAGE.append(glob.glob(os.path.join(AVERAGE_LAYERS_DIRECTORY, '*.tif')))
 
 
 ALIGNED_LAYERS_TO_AVERAGE = [
-    os.path.join(OUTPUT_DIR, 'aligned_' + uri) for uri in LAYERS_TO_AVERAGE]
+    os.path.join(OUTPUT_DIR, 'aligned_' + URI) for URI in LAYERS_TO_AVERAGE]
 ALIGNED_LAYERS_TO_AVERAGE.append(ALIGNED_TOTAL_PRECIP_URI)
 ALIGNED_LAYERS_TO_AVERAGE.append(ALIGNED_DRY_SEASON_LENGTH_URI)
 
 ALIGNED_LAYERS_TO_MAX = [
-    os.path.join(OUTPUT_DIR, 'aligned_' + uri) for uri in LAYERS_TO_MAX]
+    os.path.join(OUTPUT_DIR, 'aligned_' + URI) for URI in LAYERS_TO_MAX]
 
 PREFIX_LIST = ['af', 'am', 'as']
 BIOMASS_RASTER_LIST = [
@@ -189,12 +190,11 @@ class IntersectLandcoverTask(luigi.Task):
         return luigi.LocalTarget(GLOBAL_LANDCOVER_URI)
 
 
-def _align_raster_with_biomass(input_uri, ouput_uri):
+def _align_raster_with_biomass(input_uri, output_uri):
     nodata = raster_utils.get_nodata_from_uri(input_uri)
     if nodata is None:
         nodata = -9999
     cell_size = raster_utils.get_cell_size_from_uri(GLOBAL_BIOMASS_URI)
-    output_uri = os.path.join(OUTPUT_DIR, 'aligned_' + os.path.basename(input_uri))
     raster_utils.vectorize_datasets(
         [input_uri, GLOBAL_BIOMASS_URI], lambda x, y: x,
         output_uri, gdal.GDT_Float32, nodata, cell_size, "dataset",
@@ -456,8 +456,6 @@ class ProcessGridCellLevelStats(luigi.Task):
             base_srs, lat_lng_srs)
         gt = biomass_ds.GetGeoTransform()
 
-        grid_coordinates = dict((resolution, {}) for resolution in GRID_RESOLUTION_LIST)
-
         average_dataset_list = [gdal.Open(uri) for uri in ALIGNED_LAYERS_TO_AVERAGE]
         average_band_list = [ds.GetRasterBand(1) for ds in average_dataset_list]
         average_nodata_list = [band.GetNoDataValue() for band in average_band_list]
@@ -507,7 +505,7 @@ class ProcessGridCellLevelStats(luigi.Task):
                     for band, nodata in (max_band_list, max_nodata_list):
                         array = band.ReadAsArray(
                             global_col, global_row, global_col_size, global_row_size)
-                        value = scipy.mode(array[array != nodata])[0][0]
+                        value = scipy.stats.mode(array[array != nodata])[0][0]
                         grid_output_file.write(',%f' % value)
 
             grid_output_file.close()
