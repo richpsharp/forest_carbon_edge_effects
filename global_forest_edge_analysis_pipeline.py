@@ -11,8 +11,10 @@ import luigi
 
 from invest_natcap import raster_utils
 
-DATA_DIR = "C:/Users/rpsharp/Dropbox_stanford/Dropbox/forest_edge_carbon_data"
-OUTPUT_DIR = "C:/Users/rpsharp/Documents/carbon_edge_pipeline_workspace"
+#DATA_DIR = "C:/Users/rpsharp/Dropbox_stanford/Dropbox/forest_edge_carbon_data"
+#OUTPUT_DIR = "C:/Users/rpsharp/Documents/carbon_edge_pipeline_workspace"
+DATA_DIR = "F:/Dropbox/forest_edge_carbon_data"
+OUTPUT_DIR = "Z:/carbon_edge_pipeline_workspace"
 #DATA_DIR = "E:/dropboxcopy/forest_edge_carbon_data"
 #OUTPUT_DIR = "E:/carbon_edge_pipeline"
 #DATA_DIR = "C:/Users/rich/Documents/Dropbox/forest_edge_carbon_data"
@@ -353,6 +355,9 @@ class ProcessEcoregionTask(luigi.Task):
         return luigi.LocalTarget(BIOMASS_STATS_URI)
     
 class CalculateTotalPrecip(luigi.Task):
+
+    def requires(self):
+        yield IntersectBiomassTask()
 
     def run(self):
         precip_ds = gdal.Open(GLOBAL_PRECIP_URI)
