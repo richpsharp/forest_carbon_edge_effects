@@ -59,7 +59,7 @@ LAYERS_TO_MAX = [os.path.join(DATA_DIR, GLOBAL_SOIL_TYPES_URI)]
 LAYERS_TO_AVERAGE = [
     os.path.join(DATA_DIR, 'biophysical_layers', URI) for URI in BIOPHYSICAL_FILENAMES]
 #these are the human use layers becky sent me once
-LAYERS_TO_AVERAGE.append(glob.glob(os.path.join(AVERAGE_LAYERS_DIRECTORY, '*.tif')))
+LAYERS_TO_AVERAGE += glob.glob(os.path.join(AVERAGE_LAYERS_DIRECTORY, '*.tif'))
 
 
 ALIGNED_LAYERS_TO_AVERAGE = [
