@@ -378,6 +378,7 @@ class CalculateTotalPrecip(luigi.Task):
         precip_ds = gdal.Open(GLOBAL_PRECIP_URI)
         base_band = precip_ds.GetRasterBand(1)
         block_size = base_band.GetBlockSize()
+        #this is the nodata value of the 12 band raster I got from the ORNL website
         nodata = -99
         band_list = [precip_ds.GetRasterBand(index+1) for index in xrange(12)]
 
