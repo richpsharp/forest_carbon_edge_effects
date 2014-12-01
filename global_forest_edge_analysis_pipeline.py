@@ -7,6 +7,7 @@ import dill as pickle
 import gdal
 import osr
 import numpy
+import scipy
 import luigi
 
 from invest_natcap import raster_utils
@@ -31,9 +32,17 @@ ECOREGION_SHAPEFILE_URI = os.path.join(
     DATA_DIR, 'ecoregions', 'ecoregions_projected.shp')
 BIOMASS_STATS_URI = os.path.join(OUTPUT_DIR, "biomass_stats.csv")
 
-TOTAL_PRECIP_URI = os.path.join(OUTPUT_DIR, 'total_precip.tif')
-DRY_SEASON_LENGTH_URI = os.path.join(OUTPUT_DIR, 'dry_season_length.tif')
+#This is a 12 band raster of monthly precip
 GLOBAL_PRECIP_URI = os.path.join(DATA_DIR, "biophysical_layers", "global_precip.tiff")
+
+#It will be summed into this
+TOTAL_PRECIP_URI = os.path.join(OUTPUT_DIR, 'total_precip.tif')
+ALIGNED_TOTAL_PRECIP_URI = os.path.join(OUTPUT_DIR, 'aligned_' + os.path.basename(TOTAL_PRECIP_URI))
+
+#Dry season length will be calcualted from total precip
+DRY_SEASON_LENGTH_URI = os.path.join(OUTPUT_DIR, 'dry_season_length.tif')
+ALIGNED_DRY_SEASON_LENGTH_URI = os.path.join(OUTPUT_DIR, 'aligned_' + os.path.basename(DRY_SEASON_LENGTH_URI))
+
 
 GRID_RESOLUTION_LIST = [100]
 
@@ -43,25 +52,24 @@ BIOPHYSICAL_NODATA = [
     -9999, 11]
 
 GLOBAL_SOIL_TYPES_URI = "global_soil_types.tiff"
+LAYERS_TO_MAX = [os.path.join(DATA_DIR, GLOBAL_SOIL_TYPES_URI)]
 
+#these are the biophysical layers i downloaded from the ornl website
 LAYERS_TO_AVERAGE = [
     os.path.join(DATA_DIR, 'biophysical_layers', uri) for uri in BIOPHYSICAL_FILENAMES]
-
-#add along all the other layers that we manually extracted or rasterized into that directory
+#these are the human use layers becky sent me once
 LAYERS_TO_AVERAGE.append(glob.glob(os.path.join(AVERAGE_LAYERS_DIRECTORY, '*.tif')))
+
 
 ALIGNED_LAYERS_TO_AVERAGE = [
     os.path.join(OUTPUT_DIR, 'aligned_' + uri) for uri in LAYERS_TO_AVERAGE]
-
-ALIGNED_TOTAL_PRECIP_URI = os.path.join(OUTPUT_DIR, 'aligned_' + os.path.basename(TOTAL_PRECIP_URI))
-ALIGNED_DRY_SEASON_LENGTH_URI = os.path.join(OUTPUT_DIR, 'aligned_' + os.path.basename(DRY_SEASON_LENGTH_URI))
-
 ALIGNED_LAYERS_TO_AVERAGE.append(ALIGNED_TOTAL_PRECIP_URI)
 ALIGNED_LAYERS_TO_AVERAGE.append(ALIGNED_DRY_SEASON_LENGTH_URI)
 
+ALIGNED_LAYERS_TO_MAX = [
+    os.path.join(OUTPUT_DIR, 'aligned_' + uri) for uri in LAYERS_TO_MAX]
+
 PREFIX_LIST = ['af', 'am', 'as']
-
-
 BIOMASS_RASTER_LIST = [
     os.path.join(DATA_DIR, '%s_biov2ct1.tif' % prefix)
     for prefix in PREFIX_LIST]
@@ -180,6 +188,7 @@ class IntersectLandcoverTask(luigi.Task):
     def output(self):
         return luigi.LocalTarget(GLOBAL_LANDCOVER_URI)
 
+
 def _align_raster_with_biomass(input_uri, ouput_uri):
     nodata = raster_utils.get_nodata_from_uri(input_uri)
     if nodata is None:
@@ -191,17 +200,18 @@ def _align_raster_with_biomass(input_uri, ouput_uri):
         output_uri, gdal.GDT_Float32, nodata, cell_size, "dataset",
         dataset_to_bound_index=1, vectorize_op=False)
 
-class AlignBiophysicalLayer(luigi.Task):
-    biophysical_uri = luigi.Parameter()
+
+class AlignLayerWithBiomassTask(luigi.Task):
+    input_uri = luigi.Parameter()
     def requires(self):
         return IntersectBiomassTask()
 
     def run(self):
-        output_uri = os.path.join(OUTPUT_DIR, 'aligned_' + os.path.basename(self.biophysical_uri))
-        _align_raster_with_biomass(self.biophysical_uri, output_uri)
+        output_uri = os.path.join(OUTPUT_DIR, 'aligned_' + os.path.basename(self.input_uri))
+        _align_raster_with_biomass(self.input_uri, output_uri)
 
     def output(self):
-        output_uri = os.path.join(OUTPUT_DIR, 'aligned_' + os.path.basename(self.biophysical_uri))
+        output_uri = os.path.join(OUTPUT_DIR, 'aligned_' + os.path.basename(self.input_uri))
         return luigi.LocalTarget(output_uri)
 
 
@@ -430,8 +440,8 @@ class ProcessGridCellLevelStats(luigi.Task):
         for resolution in GRID_RESOLUTION_LIST]
 
     def requires(self):
-        for biophysical_uri in LAYERS_TO_AVERAGE + [GLOBAL_SOIL_TYPES_URI,]:
-            yield AlignBiophysicalLayer(biophysical_uri)
+        for uri in LAYERS_TO_AVERAGE + LAYERS_TO_MAX:
+            yield AlignLayerWithBiomassTask(uri)
 
         yield CalculateTotalPrecip()
         yield IntersectBiomassTask()
@@ -448,15 +458,19 @@ class ProcessGridCellLevelStats(luigi.Task):
 
         grid_coordinates = dict((resolution, {}) for resolution in GRID_RESOLUTION_LIST)
 
-        dataset_list = [gdal.Open(uri) for uri in ALIGNED_LAYERS_TO_AVERAGE]
-        band_list = [ds.GetRasterBand(1) for ds in dataset_list]
-        nodata_list = [band.GetNoDataValue() for band in band_list]
+        average_dataset_list = [gdal.Open(uri) for uri in ALIGNED_LAYERS_TO_AVERAGE]
+        average_band_list = [ds.GetRasterBand(1) for ds in average_dataset_list]
+        average_nodata_list = [band.GetNoDataValue() for band in average_band_list]
+
+        max_dataset_list = [gdal.Open(uri) for uri in ALIGNED_LAYERS_TO_MAX]
+        max_band_list = [ds.GetRasterBand(1) for ds in max_dataset_list]
+        max_nodata_list = [band.GetNoDataValue() for band in max_band_list]
 
         for global_grid_resolution, grid_output_filename in zip(GRID_RESOLUTION_LIST, self.grid_output_file_list):
             grid_output_file = open(grid_output_filename, 'w')
             grid_output_file.write('grid id,lat_coord,lng_coord')
-            for biophysical_filename in BIOPHYSICAL_FILENAMES:
-                grid_output_file.write(',%s' % os.path.splitext[0])
+            for filename in LAYERS_TO_AVERAGE + LAYERS_TO_MAX:
+                grid_output_file.write(',%s' % os.path.splitext(filename)[0])
             grid_output_file.write('\n')
 
             n_grid_rows = int(
@@ -482,10 +496,18 @@ class ProcessGridCellLevelStats(luigi.Task):
                     global_col_size = min(grid_col_stepsize, n_cols - global_col)
                     global_row_size = min(grid_row_stepsize, n_rows - global_row)
 
-                    for band, nodata in (band_list, nodata_list):
+                    #take the average values
+                    for band, nodata in (average_band_list, average_nodata_list):
                         array = band.ReadAsArray(
                             global_col, global_row, global_col_size, global_row_size)
                         value = numpy.average(array[array != nodata])
+                        grid_output_file.write(',%f' % value)
+
+                    #take the mode values
+                    for band, nodata in (max_band_list, max_nodata_list):
+                        array = band.ReadAsArray(
+                            global_col, global_row, global_col_size, global_row_size)
+                        value = scipy.mode(array[array != nodata])[0][0]
                         grid_output_file.write(',%f' % value)
 
             grid_output_file.close()
