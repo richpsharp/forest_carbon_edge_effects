@@ -44,14 +44,13 @@ ALIGNED_TOTAL_PRECIP_URI = os.path.join(OUTPUT_DIR, 'aligned_' + os.path.basenam
 DRY_SEASON_LENGTH_URI = os.path.join(OUTPUT_DIR, 'dry_season_length.tif')
 ALIGNED_DRY_SEASON_LENGTH_URI = os.path.join(OUTPUT_DIR, 'aligned_' + os.path.basename(DRY_SEASON_LENGTH_URI))
 
-
 GRID_RESOLUTION_LIST = [100]
 
+#I got these on the online ORNL site
 BIOPHYSICAL_FILENAMES = [
     "global_elevation.tiff", "global_water_capacity.tiff",]
-BIOPHYSICAL_NODATA = [
-    -9999, 11]
 
+#This is off the ORNL site too but must be processed differently
 GLOBAL_SOIL_TYPES_URI = "global_soil_types.tiff"
 LAYERS_TO_MAX = [os.path.join(DATA_DIR, GLOBAL_SOIL_TYPES_URI)]
 
@@ -60,7 +59,6 @@ LAYERS_TO_AVERAGE = [
     os.path.join(DATA_DIR, 'biophysical_layers', URI) for URI in BIOPHYSICAL_FILENAMES]
 #these are the human use layers becky sent me once
 LAYERS_TO_AVERAGE += glob.glob(os.path.join(AVERAGE_LAYERS_DIRECTORY, '*.tif'))
-
 
 ALIGNED_LAYERS_TO_AVERAGE = [
     os.path.join(OUTPUT_DIR, 'aligned_' + URI) for URI in LAYERS_TO_AVERAGE]
@@ -476,7 +474,7 @@ class ProcessGridCellLevelStats(luigi.Task):
             grid_output_file = open(grid_output_filename, 'w')
             grid_output_file.write('grid id,lat_coord,lng_coord')
             for filename in LAYERS_TO_AVERAGE + LAYERS_TO_MAX:
-                grid_output_file.write(',%s' % os.path.splitext(filename)[0])
+                grid_output_file.write(',%s' % os.path.splitext(os.path.basename(filename))[0])
             grid_output_file.write('\n')
 
             n_grid_rows = int(
@@ -510,6 +508,7 @@ class ProcessGridCellLevelStats(luigi.Task):
 
                     #take the average values
                     for band, nodata in (average_band_list, average_nodata_list):
+                        nodata = band.GetNoDataValue()
                         array = band.ReadAsArray(
                             global_col, global_row, global_col_size, global_row_size)
                         value = numpy.average(array[array != nodata])
@@ -517,8 +516,10 @@ class ProcessGridCellLevelStats(luigi.Task):
 
                     #take the mode values
                     for band, nodata in (max_band_list, max_nodata_list):
+                        nodata = band.GetNoDataValue()
                         array = band.ReadAsArray(
                             global_col, global_row, global_col_size, global_row_size)
+                        #get the most common value
                         value = scipy.stats.mode(array[array != nodata])[0][0]
                         grid_output_file.write(',%f' % value)
 
