@@ -15,7 +15,7 @@ from invest_natcap import raster_utils
 
 DATA_DIR = "C:/Users/rpsharp/Dropbox_stanford/Dropbox/forest_edge_carbon_data"
 AVERAGE_LAYERS_DIRECTORY = "C:/Users/rpsharp/Dropbox_stanford/Dropbox/average_layers_projected"
-OUTPUT_DIR = "Y:/carbon_edge_pipeline_workspace"
+OUTPUT_DIR = "C:/Users/rpsharp/Desktop/carbon_edge_pipeline_workspace"
 #DATA_DIR = "F:/Dropbox/forest_edge_carbon_data"
 #OUTPUT_DIR = "Z:/carbon_edge_pipeline_workspace"
 #DATA_DIR = "E:/dropboxcopy/forest_edge_carbon_data"
@@ -52,7 +52,7 @@ BIOPHYSICAL_FILENAMES = [
     "global_elevation.tiff", "global_water_capacity.tiff",]
 
 #This is off the ORNL site too but must be processed differently
-GLOBAL_SOIL_TYPES_URI = "global_soil_types.tiff"
+GLOBAL_SOIL_TYPES_URI = os.path.join("biophysical_layers", "global_soil_types.tiff")
 LAYERS_TO_MAX = [os.path.join(DATA_DIR, GLOBAL_SOIL_TYPES_URI)]
 
 #these are the biophysical layers i downloaded from the ornl website
