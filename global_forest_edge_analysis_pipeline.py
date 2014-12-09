@@ -6,6 +6,7 @@ import glob
 
 import dill as pickle
 import gdal
+import ogr
 import osr
 import numpy
 import scipy.stats
@@ -62,12 +63,12 @@ LAYERS_TO_AVERAGE = [
 LAYERS_TO_AVERAGE += glob.glob(os.path.join(AVERAGE_LAYERS_DIRECTORY, '*.tif'))
 
 ALIGNED_LAYERS_TO_AVERAGE = [
-    os.path.join(OUTPUT_DIR, 'aligned_' + URI) for URI in LAYERS_TO_AVERAGE]
+    os.path.join(OUTPUT_DIR, 'aligned_' + os.path.basename(URI)) for URI in LAYERS_TO_AVERAGE]
 ALIGNED_LAYERS_TO_AVERAGE.append(ALIGNED_TOTAL_PRECIP_URI)
 ALIGNED_LAYERS_TO_AVERAGE.append(ALIGNED_DRY_SEASON_LENGTH_URI)
 
 ALIGNED_LAYERS_TO_MAX = [
-    os.path.join(OUTPUT_DIR, 'aligned_' + URI) for URI in LAYERS_TO_MAX]
+    os.path.join(OUTPUT_DIR, 'aligned_' + os.path.basename(URI)) for URI in LAYERS_TO_MAX]
 
 PREFIX_LIST = ['af', 'am', 'as']
 BIOMASS_RASTER_LIST = [
@@ -440,6 +441,132 @@ class CalculateTotalPrecip(luigi.Task):
             luigi.LocalTarget(ALIGNED_DRY_SEASON_LENGTH_URI)]
 
 
+def create_grid(base_uri, start_point, cell_size, x_len, y_len, out_uri):
+    """Create an OGR shapefile where the geometry is a set of lines
+
+        base_uri - a gdal dataset to use in creating the output shapefile
+            (required)
+        start_point - a tuple of floats indicating the upper left corner of the grid
+        cell_size - a float value for the length of the line segment 
+        x_len - number of x cells wide
+        y_len - number of y cells high
+        out_uri - a string representing the file path to disk for the new
+            shapefile (required)
+
+        return - nothing"""
+
+    base_ds = gdal.Open(base_uri)
+    output_wkt = base_ds.GetProjection()
+    output_sr = osr.SpatialReference()
+    output_sr.ImportFromWkt(output_wkt)
+
+    if os.path.isfile(out_uri):
+        os.remove(out_uri)
+
+    driver = ogr.GetDriverByName('ESRI Shapefile')
+    datasource = driver.CreateDataSource(out_uri)
+
+    # Create the layer name from the uri paths basename without the extension
+    uri_basename = os.path.basename(out_uri)
+    layer_name = os.path.splitext(uri_basename)[0].encode("utf-8")
+    grid_layer = datasource.CreateLayer(
+            layer_name, output_sr, ogr.wkbPolygon)
+
+    # Add a single ID field
+    field = ogr.FieldDefn('gridid', ogr.OFTString)
+    grid_layer.CreateField(field)
+
+    for col_index in xrange(x_len):
+        for row_index in xrange(y_len):
+            poly = ogr.Geometry(ogr.wkbPolygon)
+            poly.AddPoint(start_point[0] + cell_size * col_index, start_point[1] - cell_size * row_index)
+            poly.AddPoint(start_point[0] + cell_size * (col_index+1), start_point[1] - cell_size * row_index)
+            poly.AddPoint(start_point[0] + cell_size * (col_index+1), start_point[1] - cell_size * (row_index+1))
+            poly.AddPoint(start_point[0] + cell_size * col_index, start_point[1] - cell_size * (row_index+1))
+
+            feature = ogr.Feature(grid_layer.GetLayerDefn())
+            feature.SetGeometry(poly)
+            feature.SetField(0, "%d-%d" % (row_index, col_index))
+            grid_layer.CreateFeature(feature)
+
+    datasource.SyncToDisk()
+    datasource = None
+
+
+class MakeGridShapefile(luigi.Task):
+    grid_table_file_list = [
+        os.path.join(OUTPUT_DIR, 'grid_stats_%d.csv' % resolution)
+        for resolution in GRID_RESOLUTION_LIST]
+
+    shapefile_output_list = [
+        os.path.join(OUTPUT_DIR, 'grid_shape_%d.shp' % resolution)
+        for resolution in GRID_RESOLUTION_LIST]
+
+    base_uri = GLOBAL_BIOMASS_URI
+
+    def requires(self):
+        ProcessGridCellLevelStats()
+
+
+    def run(self):
+        n_rows, n_cols = raster_utils.get_row_col_from_uri(self.base_uri)
+
+        base_ds = gdal.Open(self.base_uri, gdal.GA_ReadOnly)
+        gt = base_ds.GetGeoTransform()
+        output_wkt = base_ds.GetProjection()
+        output_sr = osr.SpatialReference(base_ds.GetProjection())
+
+        for global_grid_resolution, grid_filename, shapefile_filename in zip(GRID_RESOLUTION_LIST, self.grid_table_file_list, self.shapefile_output_list):
+
+            if os.path.isfile(shapefile_filename):
+                os.remove(shapefile_filename)
+
+            driver = ogr.GetDriverByName('ESRI Shapefile')
+            datasource = driver.CreateDataSource(shapefile_filename)
+
+            # Create the layer name from the uri paths basename without the extension
+            uri_basename = os.path.basename(shapefile_filename)
+            layer_name = os.path.splitext(uri_basename)[0].encode("utf-8")
+            grid_layer = datasource.CreateLayer(
+                    layer_name, output_sr, ogr.wkbPolygon)
+
+            # Add a single ID field
+            field = ogr.FieldDefn('gridid', ogr.OFTString)
+            grid_layer.CreateField(field)
+
+            grid_file = open(grid_filename, 'rU')
+            #grid_output_file.write('grid id,lat_coord,lng_coord')
+
+            cell_size = global_grid_resolution * 1000
+            grid_file.readline() #skip the first line
+            for line in grid_file:
+                gridid = line.split(',')[0]
+                lat_coord = int(gridid.split('-')[0])
+                lng_coord = int(gridid.split('-')[1])
+
+                ring = ogr.Geometry(ogr.wkbLinearRing)
+                ring.AddPoint(lng_coord * (global_grid_resolution * 1000) + gt[0], -lat_coord * (global_grid_resolution * 1000) + gt[3])
+                ring.AddPoint((1+lng_coord) * (global_grid_resolution * 1000) + gt[0], -lat_coord * (global_grid_resolution * 1000) + gt[3])
+                ring.AddPoint((1+lng_coord) * (global_grid_resolution * 1000) + gt[0], -(1+lat_coord) * (global_grid_resolution * 1000) + gt[3])
+                ring.AddPoint(lng_coord * (global_grid_resolution * 1000) + gt[0], -(1+lat_coord) * (global_grid_resolution * 1000) + gt[3])
+
+                poly = ogr.Geometry(ogr.wkbPolygon)
+                poly.AddGeometry(ring)
+
+
+                feature = ogr.Feature(grid_layer.GetLayerDefn())
+                feature.SetGeometry(poly)
+                feature.SetField(0, gridid)
+                grid_layer.CreateFeature(feature)
+
+            datasource.SyncToDisk()
+            datasource = None
+
+
+    def output(self):
+        return [luigi.LocalTarget(uri) for uri in self.shapefile_output_list]
+
+
 class ProcessGridCellLevelStats(luigi.Task):
     grid_output_file_list = [
         os.path.join(OUTPUT_DIR, 'grid_stats_%d.csv' % resolution)
@@ -464,7 +591,15 @@ class ProcessGridCellLevelStats(luigi.Task):
         biomass_band = biomass_ds.GetRasterBand(1)
         biomass_nodata = biomass_band.GetNoDataValue()
 
+        nonexistant_files = []
+        for uri in ALIGNED_LAYERS_TO_AVERAGE:
+            if not os.path.isfile(uri):
+                nonexistant_files.append(uri)
+        if len(nonexistant_files) > 0:
+            raise Exception("The following files don't exist: %s" % (str(nonexistant_files)))
+
         average_dataset_list = [gdal.Open(uri) for uri in ALIGNED_LAYERS_TO_AVERAGE]
+
         average_band_list = [ds.GetRasterBand(1) for ds in average_dataset_list]
         average_nodata_list = [band.GetNoDataValue() for band in average_band_list]
 
@@ -473,66 +608,74 @@ class ProcessGridCellLevelStats(luigi.Task):
         max_nodata_list = [band.GetNoDataValue() for band in max_band_list]
 
         for global_grid_resolution, grid_output_filename in zip(GRID_RESOLUTION_LIST, self.grid_output_file_list):
-            grid_output_file = open(grid_output_filename, 'w')
-            grid_output_file.write('grid id,lat_coord,lng_coord')
-            for filename in LAYERS_TO_AVERAGE + LAYERS_TO_MAX:
-                grid_output_file.write(',%s' % os.path.splitext(os.path.basename(filename))[0])
-            grid_output_file.write('\n')
+            try:
+                grid_output_file = open(grid_output_filename, 'w')
+                grid_output_file.write('grid id,lat_coord,lng_coord')
+                for filename in LAYERS_TO_AVERAGE + LAYERS_TO_MAX:
+                    grid_output_file.write(',%s' % os.path.splitext(os.path.basename(filename))[0])
+                grid_output_file.write('\n')
 
-            n_grid_rows = int(
-                (-gt[5] * n_rows) / (global_grid_resolution * 1000))
-            n_grid_cols = int(
-                (gt[1] * n_cols) / (global_grid_resolution * 1000))
+                n_grid_rows = int(
+                    (-gt[5] * n_rows) / (global_grid_resolution * 1000))
+                n_grid_cols = int(
+                    (gt[1] * n_cols) / (global_grid_resolution * 1000))
 
-            grid_row_stepsize = int(n_rows / float(n_grid_rows))
-            grid_col_stepsize = int(n_cols / float(n_grid_cols))
+                grid_row_stepsize = int(n_rows / float(n_grid_rows))
+                grid_col_stepsize = int(n_cols / float(n_grid_cols))
 
-            for grid_row in xrange(n_grid_rows):
-                for grid_col in xrange(n_grid_cols):
-                    
-                    #first check to make sure there is biomass at all!
-                    global_row = grid_row * grid_row_stepsize
-                    global_col = grid_col * grid_col_stepsize
-                    global_col_size = min(grid_col_stepsize, n_cols - global_col)
-                    global_row_size = min(grid_row_stepsize, n_rows - global_row)
-                    array = biomass_band.ReadAsArray(
-                        global_col, global_row, global_col_size, global_row_size)
-                    if numpy.count_nonzero(array != biomass_nodata) == 0:
-                        continue
-
-                    grid_id = '%d-%d' % (grid_row, grid_col)
-                    grid_row_center = -(grid_row + 0.5) * (global_grid_resolution*1000) + gt[3]
-                    grid_col_center = (grid_col + 0.5) * (global_grid_resolution*1000) + gt[0]
-                    grid_lng_coord, grid_lat_coord, _ = coord_transform.TransformPoint(
-                        grid_col_center, grid_row_center)
-                    grid_output_file.write('%s,%s,%s' % (grid_id, grid_lat_coord, grid_lng_coord))
-
-
-                    #take the average values
-                    for band, nodata in (average_band_list, average_nodata_list):
-                        nodata = band.GetNoDataValue()
-                        array = band.ReadAsArray(
+                for grid_row in xrange(n_grid_rows):
+                    for grid_col in xrange(n_grid_cols):
+                        #first check to make sure there is biomass at all!
+                        global_row = grid_row * grid_row_stepsize
+                        global_col = grid_col * grid_col_stepsize
+                        global_col_size = min(grid_col_stepsize, n_cols - global_col)
+                        global_row_size = min(grid_row_stepsize, n_rows - global_row)
+                        array = biomass_band.ReadAsArray(
                             global_col, global_row, global_col_size, global_row_size)
-                        value = numpy.average(array[array != nodata])
-                        grid_output_file.write(',%f' % value)
+                        if numpy.count_nonzero(array != biomass_nodata) == 0:
+                            continue
 
-                    #take the mode values
-                    for band, nodata in (max_band_list, max_nodata_list):
-                        nodata = band.GetNoDataValue()
-                        array = band.ReadAsArray(
-                            global_col, global_row, global_col_size, global_row_size)
-                        #get the most common value
-                        value = scipy.stats.mode(array[array != nodata])[0][0]
-                        grid_output_file.write(',%f' % value)
+                        grid_id = '%d-%d' % (grid_row, grid_col)
+                        grid_row_center = -(grid_row + 0.5) * (global_grid_resolution*1000) + gt[3]
+                        grid_col_center = (grid_col + 0.5) * (global_grid_resolution*1000) + gt[0]
+                        grid_lng_coord, grid_lat_coord, _ = coord_transform.TransformPoint(
+                            grid_col_center, grid_row_center)
+                        grid_output_file.write('%s,%s,%s' % (grid_id, grid_lat_coord, grid_lng_coord))
 
-            grid_output_file.close()
+
+                        #take the average values
+                        for band, nodata in zip(average_band_list, average_nodata_list):
+                            nodata = band.GetNoDataValue()
+                            array = band.ReadAsArray(
+                                global_col, global_row, global_col_size, global_row_size)
+                            value = numpy.average(array[array != nodata])
+                            grid_output_file.write(',%f' % value)
+
+                        #take the mode values
+                        for band, nodata in zip(max_band_list, max_nodata_list):
+                            nodata = band.GetNoDataValue()
+                            array = band.ReadAsArray(
+                                global_col, global_row, global_col_size, global_row_size)
+                            #get the most common value
+                            valid_values = array[array != nodata]
+                            if valid_values.size != 0:
+                                value = scipy.stats.mode(valid_values)[0][0]
+                                grid_output_file.write(',%f' % value)
+                            else:
+                                grid_output_file.write(',n/a')
+                        grid_output_file.write('\n')
+                grid_output_file.close()
+            except IndexError as e:
+                grid_output_file.close()
+                os.remove(grid_output_filename)
+                raise e
 
     def output(self):
         return [luigi.LocalTarget(uri) for uri in self.grid_output_file_list]
 
 class Runit(luigi.Task):
     def requires(self):
-        return [ProcessEcoregionTask(), ProcessGridCellLevelStats()]
+        return [ProcessEcoregionTask(), ProcessGridCellLevelStats(), MakeGridShapefile()]
 
 
 if __name__ == '__main__':
