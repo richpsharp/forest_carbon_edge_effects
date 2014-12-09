@@ -530,15 +530,27 @@ class MakeGridShapefile(luigi.Task):
             grid_layer = datasource.CreateLayer(
                     layer_name, output_sr, ogr.wkbPolygon)
 
-            # Add a single ID field
-            field = ogr.FieldDefn('gridid', ogr.OFTString)
-            grid_layer.CreateField(field)
-
             grid_file = open(grid_filename, 'rU')
+            headers = grid_file.readline().rstrip().split(',') #skip the first line
+
+            # Add a single ID field
+            field = ogr.FieldDefn(headers[0], ogr.OFTString)
+            grid_layer.CreateField(field)
+            field_names = [headers[0]]
+            for arg in headers[1:]:
+                if arg.startswith('anthrome_'):
+                    arg = 'anth' + arg[9:]
+                else:
+                    arg = arg[:10]
+                field = ogr.FieldDefn(arg, ogr.OFTString)
+                field_names.append(arg)
+                grid_layer.CreateField(field)
+            grid_layer.CommitTransaction()
+
             #grid_output_file.write('grid id,lat_coord,lng_coord')
 
             cell_size = global_grid_resolution * 1000
-            grid_file.readline() #skip the first line
+            
             for line in grid_file:
                 gridid = line.split(',')[0]
                 lat_coord = int(gridid.split('-')[0])
@@ -556,7 +568,12 @@ class MakeGridShapefile(luigi.Task):
 
                 feature = ogr.Feature(grid_layer.GetLayerDefn())
                 feature.SetGeometry(poly)
-                feature.SetField(0, gridid)
+                #feature.SetField(0, gridid)
+                for (index, value), field_name in zip(enumerate(line.rstrip().split(',')), field_names):
+                    #index is not the way to go here, use the name
+                    feature.SetField(field_name, str(value))
+                    #field = ogr.FieldDefn(float(arg), ogr.OFTString)
+                    #grid_layer.CreateField(field)         
                 grid_layer.CreateFeature(feature)
 
             datasource.SyncToDisk()
