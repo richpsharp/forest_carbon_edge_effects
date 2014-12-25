@@ -566,9 +566,10 @@ class MakeGridShapefile(luigi.Task):
 
                 ring = ogr.Geometry(ogr.wkbLinearRing)
                 ring.AddPoint(lng_coord * (global_grid_resolution * 1000) + gt[0], -lat_coord * (global_grid_resolution * 1000) + gt[3])
-                ring.AddPoint((1+lng_coord) * (global_grid_resolution * 1000) + gt[0], -lat_coord * (global_grid_resolution * 1000) + gt[3])
-                ring.AddPoint((1+lng_coord) * (global_grid_resolution * 1000) + gt[0], -(1+lat_coord) * (global_grid_resolution * 1000) + gt[3])
                 ring.AddPoint(lng_coord * (global_grid_resolution * 1000) + gt[0], -(1+lat_coord) * (global_grid_resolution * 1000) + gt[3])
+                ring.AddPoint((1+lng_coord) * (global_grid_resolution * 1000) + gt[0], -(1+lat_coord) * (global_grid_resolution * 1000) + gt[3])
+                ring.AddPoint((1+lng_coord) * (global_grid_resolution * 1000) + gt[0], -lat_coord * (global_grid_resolution * 1000) + gt[3])
+                ring.AddPoint(lng_coord * (global_grid_resolution * 1000) + gt[0], -lat_coord * (global_grid_resolution * 1000) + gt[3])
 
                 poly = ogr.Geometry(ogr.wkbPolygon)
                 poly.AddGeometry(ring)
