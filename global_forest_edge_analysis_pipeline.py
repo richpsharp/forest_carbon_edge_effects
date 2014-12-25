@@ -505,7 +505,7 @@ class MakeGridShapefile(luigi.Task):
     base_uri = GLOBAL_BIOMASS_URI
 
     def requires(self):
-        ProcessGridCellLevelStats()
+        return ProcessGridCellLevelStats()
 
 
     def run(self):
@@ -515,7 +515,8 @@ class MakeGridShapefile(luigi.Task):
         gt = base_ds.GetGeoTransform()
         output_wkt = base_ds.GetProjection()
         output_sr = osr.SpatialReference(base_ds.GetProjection())
-
+        #got this from reading the grid output
+        string_args = ['Confidence', 'gridID', 'forest', 'main_biome', 'main_ecoregion', 'Continent']
         for global_grid_resolution, grid_filename, shapefile_filename in zip(GRID_RESOLUTION_LIST, self.grid_table_file_list, self.shapefile_output_list):
 
             if os.path.isfile(shapefile_filename):
@@ -538,11 +539,15 @@ class MakeGridShapefile(luigi.Task):
             grid_layer.CreateField(field)
             field_names = [headers[0]]
             for arg in headers[1:]:
+
                 if arg.startswith('anthrome_'):
                     arg = 'anth' + arg[9:]
                 else:
                     arg = arg[:10]
-                field = ogr.FieldDefn(arg, ogr.OFTString)
+                if arg in string_args:
+                    field = ogr.FieldDefn(arg, ogr.OFTString)
+                else:
+                    field = ogr.FieldDefn(arg, ogr.OFTReal)
                 field_names.append(arg)
                 grid_layer.CreateField(field)
             grid_layer.CommitTransaction()
@@ -571,7 +576,15 @@ class MakeGridShapefile(luigi.Task):
                 #feature.SetField(0, gridid)
                 for (index, value), field_name in zip(enumerate(line.rstrip().split(',')), field_names):
                     #index is not the way to go here, use the name
-                    feature.SetField(field_name, str(value))
+                    if field_name in string_args:
+                        if value == '-9999':
+                            value = 'NA'
+                        feature.SetField(field_name, str(value))
+                    else:
+                        try:
+                            feature.SetField(field_name, float(value))
+                        except ValueError:
+                            feature.SetField(field_name, -9999)
                     #field = ogr.FieldDefn(float(arg), ogr.OFTString)
                     #grid_layer.CreateField(field)         
                 grid_layer.CreateFeature(feature)
@@ -588,6 +601,7 @@ class ProcessGridCellLevelStats(luigi.Task):
     grid_output_file_list = [
         os.path.join(OUTPUT_DIR, 'grid_stats_%d.csv' % resolution)
         for resolution in GRID_RESOLUTION_LIST]
+    forest_only_table_uri = r"C:\Users\rpsharp\Dropbox_stanford\Dropbox\forest_edge_carbon_data\left_join_tables\forest_only.csv"
 
     def requires(self):
         for uri in LAYERS_TO_AVERAGE + LAYERS_TO_MAX:
@@ -607,6 +621,9 @@ class ProcessGridCellLevelStats(luigi.Task):
         gt = biomass_ds.GetGeoTransform()
         biomass_band = biomass_ds.GetRasterBand(1)
         biomass_nodata = biomass_band.GetNoDataValue()
+
+        forest_table = raster_utils.get_lookup_from_csv(self.forest_only_table_uri, 'gridID')
+        forest_headers = list(forest_table.values()[0].keys())
 
         nonexistant_files = []
         for uri in ALIGNED_LAYERS_TO_AVERAGE:
@@ -628,8 +645,10 @@ class ProcessGridCellLevelStats(luigi.Task):
             try:
                 grid_output_file = open(grid_output_filename, 'w')
                 grid_output_file.write('grid id,lat_coord,lng_coord')
-                for filename in LAYERS_TO_AVERAGE + LAYERS_TO_MAX:
-                    grid_output_file.write(',%s' % os.path.splitext(os.path.basename(filename))[0])
+                for filename in ALIGNED_LAYERS_TO_AVERAGE + ALIGNED_LAYERS_TO_MAX:
+                    grid_output_file.write(',%s' % os.path.splitext(os.path.basename(filename))[0][len('aligned_'):])
+                for header in forest_headers:
+                    grid_output_file.write(',%s' % header)
                 grid_output_file.write('\n')
 
                 n_grid_rows = int(
@@ -661,11 +680,23 @@ class ProcessGridCellLevelStats(luigi.Task):
 
 
                         #take the average values
-                        for band, nodata in zip(average_band_list, average_nodata_list):
+                        for band, nodata, layer_uri in zip(average_band_list, average_nodata_list, ALIGNED_LAYERS_TO_AVERAGE + ALIGNED_LAYERS_TO_MAX):
                             nodata = band.GetNoDataValue()
                             array = band.ReadAsArray(
                                 global_col, global_row, global_col_size, global_row_size)
-                            value = numpy.average(array[array != nodata])
+                            layer_name = os.path.splitext(os.path.basename(layer_uri))[0][len('aligned_'):]
+                             
+                            pure_average_layers = [
+                                'global_elevation', 'global_water_capacity', 'fi_average',
+                                'lighted_area_luminosity', 'glbctd1t0503m', 'glbgtd1t0503m',
+                                'glbpgd1t0503m', 'glbshd1t0503m', 'glds00ag', 'glds00g']
+                            if layer_name not in pure_average_layers:
+                                array[array == nodata] = 0.0
+                            valid_values = array[array != nodata]
+                            if valid_values.size != 0:
+                                value = numpy.average(valid_values)
+                            else:
+                                value = -9999.
                             grid_output_file.write(',%f' % value)
 
                         #take the mode values
@@ -679,13 +710,27 @@ class ProcessGridCellLevelStats(luigi.Task):
                                 value = scipy.stats.mode(valid_values)[0][0]
                                 grid_output_file.write(',%f' % value)
                             else:
-                                grid_output_file.write(',n/a')
+                                grid_output_file.write(',-9999')
+
+                        #add the forest_only values
+                        for header in forest_headers:
+                            try:
+                                value = forest_table[grid_id][header]
+                                if type(value) == unicode:
+                                    grid_output_file.write(',%s' % forest_table[grid_id][header].encode('latin-1', 'replace'))
+                                else:
+                                    grid_output_file.write(',%s' % forest_table[grid_id][header])
+                            except KeyError:
+                                grid_output_file.write(',-9999')
+
+
                         grid_output_file.write('\n')
                 grid_output_file.close()
             except IndexError as e:
                 grid_output_file.close()
                 os.remove(grid_output_filename)
                 raise e
+            break # this is for debugging so i only do one row
 
     def output(self):
         return [luigi.LocalTarget(uri) for uri in self.grid_output_file_list]
