@@ -542,8 +542,11 @@ class MakeGridShapefile(luigi.Task):
 
                 if arg.startswith('anthrome_'):
                     arg = 'anth' + arg[9:]
+                elif arg.startswith('prop_main'):
+                    arg = 'pr_mn' + arg[9:14]
                 else:
                     arg = arg[:10]
+
                 if arg in string_args:
                     field = ogr.FieldDefn(arg, ogr.OFTString)
                 else:
