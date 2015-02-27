@@ -129,7 +129,7 @@ class UnionRastersTask(luigi.Task):
         the result is a single output raster with the bounding box extents
         covering all the rasters and data defined in the stack that is defined
         in at least one input raster.  We use it in this context to join
-        the contenential rasters togeter into a global one"""
+        the contenential rasters together into a global one"""
 
     dataset_uri_list = luigi.Parameter(is_list=True)
     dataset_out_uri = luigi.Parameter()
